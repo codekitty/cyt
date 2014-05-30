@@ -1,6 +1,7 @@
 %% Using LOUVAIN to get meta clusters
 
-function [cluster_mapping, centroids, meta_cluster_channel] = LOUVAIN_meta_clusters(data, cluster_channel, inds, nKNeighbors)
+function [cluster_mapping, centroids, meta_cluster_channel] = LOUVAIN_meta_clusters(data, cluster_channel, inds, nKNeighbors, metric)
+
 %returns matrix where each row is a cluster and 
 %col1 = meta cluster number
 %col2 = cluster number
@@ -17,8 +18,13 @@ function [cluster_mapping, centroids, meta_cluster_channel] = LOUVAIN_meta_clust
         cluster_mapping = vertcat(cluster_mapping, horzcat(repmat(i,[size(unique(cluster_channel(inds{i}))),1]),unique(cluster_channel(inds{i}))));
         
         for j=1:size(unique(cluster_channel(inds{i})),1), %looping through clusters in gate/sample
-            centroids(k,:) = mean(data(cluster_channel(inds{i}) == j,:));
-            cluster_sizes(k) = size(data(cluster_channel(inds{i}) == j,:),1) / size(cluster_channel(inds{i}),1);
+            d = data(inds{i},:);
+            %centroids(k,:) = mean(data(cluster_channel(inds{i}) == j,:));
+            centroids(k,:) = mean(d(cluster_channel(inds{i}) == j,:));
+
+            %cluster_sizes(k) = size(data(cluster_channel(inds{i}) == j,:),1) / size(cluster_channel(inds{i}),1);
+            cluster_sizes(k) = size(d(cluster_channel(inds{i}) == j,:),1) / size(cluster_channel(inds{i}),1);
+
             k=k+1;
         end
     end
@@ -26,7 +32,7 @@ function [cluster_mapping, centroids, meta_cluster_channel] = LOUVAIN_meta_clust
     cluster_mapping = horzcat(linspace(1,size(cluster_mapping,1),size(cluster_mapping,1))', cluster_mapping, cluster_sizes');   %col1 = cluster number, col2=sample number, col3=withing sample cluster number
     
     % create a sparse KNN matrix
-    sparse_adjacency_matrix = spdists_knngraph(centroids, nKNeighbors, 'euclidean', 5000);  %why 5000?
+    sparse_adjacency_matrix = spdists_knngraph(centroids, nKNeighbors, lower(metric), 5000);  %why 5000?
 
     % Call louvain's matlab implementation
 	[cmty, mod] = spdists_louvain(sparse_adjacency_matrix);

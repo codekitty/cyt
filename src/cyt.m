@@ -524,6 +524,8 @@ function lstGates_Callback(~, ~, ~)
     set(handles.lstChannels, 'String', channel_names);
     setChannelNamesToAxis(handles.lstClusterChannels, channel_names);
     setChannelNamesToAxis(handles.lstMetaClusterChannels, channel_names);
+    setChannelNamesToAxis(handles.lstBasisOfMetaChannel, channel_names);
+    setChannelNamesToAxis(handles.lstTsneColorBy, channel_names);
     setChannelNamesToAxis(handles.lstFunctionalXAxis, channel_names);
     setChannelNamesToAxis(handles.pupXAxis, channel_names);
     setChannelNamesToAxis(handles.pupYAxis, channel_names);
@@ -671,6 +673,7 @@ function hidePlotControls
     set(handles.pnlSingleClusterControls, 'Visible', 'off');
     set(handles.pnlMetaClusterControls, 'Visible', 'off');
     set(handles.pnlSingleMetaControls, 'Visible', 'off');
+    set(handles.pnlMetaTsneColor, 'visible', 'off');
     
 end
 
@@ -1296,6 +1299,59 @@ function plot_single_cluster(current_cluster)
     
 end
 
+
+function createMeta
+    handles = gethand;
+    
+    gates        = retr('gates');
+    sessionData  = retr('sessionData');
+    gate_context = retr('gateContext');
+    selected_channels = get(handles.lstChannels,'Value');
+    gate_names        = get(handles.lstGates, 'String');
+    selected_gates = get(handles.lstGates, 'Value');
+    [~, channel_names] = getSelectedIndices(selected_gates);
+    
+    
+    %find channels that might be cluster channels => discrete channels
+    
+    params = retr('metaParams');
+    if (isempty(params))
+        params = [];
+        params.neighbors = 2;
+        params.metric = 'euclidean';
+        params.selected_gates = numel(gate_names);
+        params.all_channels = channel_names;
+        params.cluster_channel = 1;
+        %params.all_channels = numel(channel_names');
+    end
+    
+    params = create_metaGUI('gates', gate_names, 'params', params);
+    if (isempty(params))
+        return;
+    end
+    put('metaParams', params);
+
+
+    try
+        
+        %finding indeces of selected samples (currently assuming that no overlap occures between indeces)
+        inds = {};
+        for i=1:length(selected_gates),
+            inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
+        end
+        
+        [~, ~, meta_cluster_channel] = LOUVAIN_meta_clusters(sessionData(gate_context,selected_channels), sessionData(gate_context,params.cluster_channel), inds, params.neighbors, params.metric);
+        addChannels({'meta_clusters'}, meta_cluster_channel, gate_context);
+
+    catch e
+        uiwait(msgbox(sprintf('Finding meta clusters failed: %s', e.message),...
+            'Error','error'));  
+        return;        
+    end
+    
+end
+
+
 function plot_meta_clusters(cluster_channel)
     %fprintf('Meta clusters not implemented yet\n');
     
@@ -1307,7 +1363,7 @@ function plot_meta_clusters(cluster_channel)
     legend('off');
     colorbar('delete');
     axis auto;
-    
+        
     % show controls
     if ~isCtrlPressed
         set(handles.pnlMetaClusterControls, 'Visible', 'on');
@@ -1330,9 +1386,26 @@ function plot_meta_clusters(cluster_channel)
     
     initClusterSelection = size(session_data, 2);
     
+    %find meta cluster channel
+    meta_channel      = get(handles.lstMetaClusterChannels, 'Value');
+    if isempty(meta_channel) || ~isDiscrete(meta_channel) || length(unique(session_data(gate_context, meta_channel))) > 500, %if channels is empty or channel is not discrete or the number of clusters is too large
+%         [s,v] = listdlg('PromptString','Select a cluster channel:',...
+%                 'SelectionMode','single',...
+%                 'InitialValue', initClusterSelection,...
+%                 'ListString',channel_names);
+        if ~v
+            return;
+        elseif ~isDiscrete(meta_channel)
+            return;
+        elseif length(unique(meta_channel)) > 500,
+            return;
+        end
+        meta_channel = s;
+    end
+    
     %find cluster channel
-    cluster_channel      = get(handles.lstMetaClusterChannels, 'Value');
-    if isempty(cluster_channel) || ~isDiscrete(cluster_channel) || length(unique(session_data(gate_context, cluster_channel))) > 500, %if channels is empty or channel is not discrete or the number of clusters is too large
+    cluster_channel      = get(handles.lstBasisOfMetaChannel, 'Value');
+    if isempty(meta_channel) || ~isDiscrete(cluster_channel) || length(unique(session_data(gate_context, cluster_channel))) > 500, %if channels is empty or channel is not discrete or the number of clusters is too large
 %         [s,v] = listdlg('PromptString','Select a cluster channel:',...
 %                 'SelectionMode','single',...
 %                 'InitialValue', initClusterSelection,...
@@ -1347,6 +1420,7 @@ function plot_meta_clusters(cluster_channel)
         cluster_channel = s;
     end
     
+    
     %finding indeces of selected samples (currently assuming that no overlap occures between indeces)
     inds = {};
     
@@ -1354,8 +1428,9 @@ function plot_meta_clusters(cluster_channel)
         inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
     end
     
-    %finding meta clusters
-    [cluster_mapping, centroids, meta_cluster_channel] = LOUVAIN_meta_clusters(session_data(gate_context,selected_channels), session_data(gate_context,cluster_channel), inds, 2);
+    %finding cluster centroids and mapping between clusters and meta clusters
+    meta_cluster_channel = session_data(gate_context, meta_channel);
+    [centroids, cluster_mapping] = get_centroids(session_data(gate_context, selected_channels), inds, session_data(gate_context, cluster_channel), meta_cluster_channel); 
     
     %finding plot type
     plot_types = get(handles.popMetaPlotOptions, 'String');
@@ -1385,11 +1460,14 @@ function plot_meta_clusters(cluster_channel)
         
     elseif strcmp(plot_type,'tSNE map'),
         
-        
+        if ~isCtrlPressed
+            set(handles.pnlMetaTsneColor, 'Visible', 'on');
+        end
+       
         %testing that no centroids are NaN (can happen if subsample does
         %not contain any cells from a specific cluster)
         unique_meta_clusters = unique(cluster_mapping(:,1));
-        cluster_mapping(isnan(centroids(:,1)),:) = [];    %removing rows that correspond to custers where centroid is NaN
+        cluster_mapping(isnan(centroids(:,1)),:) = [];    %removing rows that correspond to clusters where centroid is NaN
         
         %testing if any meta clusters get dropped (can happen eg happen if meta cluster only contains one cluster and this contains NaN in centroids
         if (length(unique_meta_clusters) ~= length(unique(cluster_mapping(:,1)))),
@@ -1399,8 +1477,57 @@ function plot_meta_clusters(cluster_channel)
         centroids(isnan(centroids(:,1)),:) = [];  %removing rows with NaNs in centroids
         
         dot_size = 500/max(cluster_mapping(:,5)) * cluster_mapping(:,5)+5;  %rescaling size so they make sense size wise
-        tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
-        scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), cluster_mapping(:,1), dot_size); %plotting
+        
+        %finding previous tSNE or calculating tSNE
+        tSNE_out = retr('tsneParams');
+        if (isempty(tSNE_out)),
+            tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
+            %tSNE_out = tsne(centroids, [], 2, size(centroids,2), 5);        
+        end
+        put('tsneParams', tSNE_out);
+        
+        %finding color channel
+        color_chan = get(handles.lstTsneColorBy,'Value');        
+        
+        %testing if color_chan is discrete (= maybe cluster channel) or continous (maybe marker channel)
+        %if isDiscrete(color_chan) && length(unique(session_data(gate_context, color_chan))) < 500,
+        if color_chan == meta_channel,
+            tsne_col = cluster_mapping(:,1);
+            scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size); %plotting
+
+        else
+            
+            %finding marker means for marker selected
+            inds = {};
+    
+            for i=1:length(selected_gates),
+                inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
+            end
+            
+            tsne_col = zeros(size(centroids,1),1);
+            for i=1:size(centroids,1),
+                sub_data = session_data(inds{cluster_mapping(i,3)},:);
+                tsne_col(i) = mean(sub_data(sub_data(:,cluster_channel) == cluster_mapping(i,4), color_chan));
+                %tsne_col(cluster_mapping(:,1) == i) = median(session_data(session_data(gate_context,cluster_channel) == i,color_chan));
+            end
+            
+            %making 0.95 quantile most red color and 0.05 quantile most blue color to compensate for outliers
+            tsne_col(tsne_col < quantile(tsne_col, 0.05)) = quantile(tsne_col,0.05);
+            tsne_col(tsne_col > quantile(tsne_col, 0.95)) = quantile(tsne_col, 0.95);
+            
+            scatter(tSNE_out(:,1),tSNE_out(:,2), dot_size, tsne_col, 'fill');
+            colorbar;
+
+        end
+        
+        xlabel('tSNE1');
+        ylabel('tSNE2');
+        
+        %tSNE_out = fast_tsne(centroids, 50, 10);
+        %tSNE_plot(tSNE_out, 'metaclusters',meta_cluster_list, out_dir, dot_size);
+        %scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), color_variable, dot_size)
+
+              
         
     elseif strcmp(plot_type,'Single meta cluster'),
         
@@ -3014,6 +3141,8 @@ function cmnChannels_Callback(hObject, eventdata, handles)
 	set(handles.mniCommunityLabels, 'Visible', state);
 end
 
+
+
 function cmiSplitToGates_Callback(~, ~, ~)
 	handles = gethand;
 
@@ -3922,57 +4051,6 @@ function flocked_data = flock(data)
     end
 
 end
-
-function create_cluster_means()
-    handles = gethand; % GUI handles to retrieve info from gui as below
-
-    selected_channel = get(handles.lstChannels, 'Value'); % ---------------
-
-    session_data  = retr('sessionData'); % all data
-    gates         = retr('gates'); 
-    gate_context  = retr('gateContext'); % indices currently selected
-    channel_names = retr('channelNames');
-
-	data = session_data(gate_context, :);
-    grouping = session_data(gate_context, selected_channel);
-    
-    selection = questdlg('Use normalized means?' ,...
-                     'Normalize',...
-                     'Yes','No','Yes');
-    if strcmp(selection,'Yes')
-        data = mynormalize(data, 99);
-        data(:, selected_channel) = grouping;
-    end
-    
-	cluster_ids = unique(grouping)';
-    centers = zeros(length(cluster_ids), size(session_data, 2));
-    i=0;
-    for c=cluster_ids
-        i = i+1;
-        cluster_inds = find(grouping==c);
-        centers(i, :) = mean(data(cluster_inds, :));
-    end
-
-    samplePercent = countmember(cluster_ids, grouping);
-    samplePercent = samplePercent./max(samplePercent);
-      
-    session_data(end+1:end+size(centers,1), :) = centers;
-    put('sessionData', session_data);
-    
-    
-    cluster_gate_inds = size(session_data, 1)-(size(centers,1)-1):size(session_data, 1);
-    
-    add_gate(sprintf('clusters - %s',...
-        channel_names{selected_channel}),...
-        cluster_gate_inds,...
-        channel_names);
-
-    addChannels({'sample percent', 'sample size'},...
-        [countmember(cluster_ids, grouping)' samplePercent'],...
-        cluster_gate_inds,...
-        size(gates, 1)+1);
-
-end
 % ------------
 % add your own code here. please refer to examples below.
 % ------------
@@ -3988,8 +4066,7 @@ function openEndedAction
     gate_context = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
     
-    create_cluster_means;
-    return;
+    
     % create a knn graph and export cluster means to graphml
     [s,v] = listdlg('PromptString','Select a cluster channel:',...
             'SelectionMode','single',...
@@ -4036,8 +4113,7 @@ function openEndedAction
     end
     
 	coeff = pca(means,2);
-	scatter_by_point(coeff(:,1), coeff(:,2), cluster_ids', floor(samplePercent*2000)); %plotting
-    axis([-1 1 -1 1])
+	scatter_by_point(coeff(:,1), coeff(:,2), cluster_ids, floor(samplePercent*32)); %plotting
 
 %     write_graphml(dists, sampleID, samplePercent, means, names, node_names);
     
