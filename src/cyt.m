@@ -290,15 +290,11 @@ function OpenMenuItem_Callback(~, ~, ~)
         currentfolder = '';
     end
 
-    
-    %/Users/mtadmor/Data/Cytof/AML_Ateam/
     files = uipickfiles('num',[1 inf],'out','cell', 'FilterSpec', [currentfolder '*.fcs']);
     if isequal(files,0) ~=0
         return 
     end
     
-    
-
     [path, ~, ext] = fileparts(files{1});
     put('currentfolder', [path filesep]);
     
@@ -1888,8 +1884,8 @@ function hPlot=plotScatter
         else
             clr = distinguishable_colors(numel(selected_gates));
         end
-                
-         myplotclr(vX, vY, vZ, vColor, 'o', clr, [min(vColor), max(vColor)], nSelChannels == 3);
+               % TODO TODO 
+        myplotclr(vX, vY, vZ, vColor, 'o', clr, [min(vColor), max(vColor)], nSelChannels == 3);
         box on;
         colorbar off;
 
@@ -1924,10 +1920,16 @@ function hPlot=plotScatter
                     vZ = rand(1, numel(vX))*(clim(2)-clim(1))+clim(1);
                 end
 
+                
                 myplotclr(vX, vY, vZ, vColor, 'o', colormap, clim, nSelChannels == 3);      
                 colorbar;
                 caxis(clim);
                 
+                
+%                   vSize = sessionData(gateContext, end);
+%                  vSize = mynormalize(vSize, 99.99)*1000;
+%                   myscatter_by_point(vX, vY, vColor, vSize, false);
+
             else % color by community.
                 
                 if get(handles.chkGradientCommunities, 'Value')
@@ -1953,6 +1955,10 @@ function hPlot=plotScatter
             colorbar off;
             hl=legend(cellfun(@(n)(num2str(n)), num2cell(unique(vColor)), 'UniformOutput', false));                    
 %               gscatter(vX, vY ,vColor, clr, '.', get(0, 'DefaultLineMarkerSize'), doleg);
+
+%                  vSize = sessionData(gateContext, end);
+%                  vSize = mynormalize(vSize, 99.99)*1000;
+%                   myscatter_by_point(vX, vY, vColor, vSize, true);
 
 
 
@@ -2411,14 +2417,12 @@ function runTSNE(normalize)
 %     map = compute_mapping(sessionData(gate_context, selected_channels), 'tSNE', ndims);
     tic;
     data = sessionData(gate_context, selected_channels);
-    normalize = true;
-    % normalize 
-    if (normalize)
-        disp('Normalizing according to the 99th percentile...');
-        data = data./repmat(prctile(data, 99), size(data, 1), 1);
-        
-        data(data > 1) = 1;
-        data(isinf(data)) = 0;
+    
+    selection = questdlg('Compute over normalized data?' ,...
+                     'Normalize',...
+                     'Yes','No','Yes');
+    if strcmp(selection,'Yes')
+        data = mynormalize(data, 99);
     end
 
 %     new_selected_channels = selected_channels(prctile(data, 99) >= 2.2);

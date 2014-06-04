@@ -29,6 +29,7 @@ function myplotclr(x,y,z,v,marker, map, clim, draw_grid)
 %
 % Uli Theune, University of Alberta, 2004
 % modified by Stephanie Contardo, British OCeanographic Data Centre, 2006
+% modified by Michelle Tadmor, Columbia University, 2013
 %
 
 %delete(gca)

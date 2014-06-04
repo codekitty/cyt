@@ -110,9 +110,18 @@ if (~show_error)
 else
     for i=1:num_locs
         Y_errs(i, :) = sqrt(weights(i, :)*(Y-repmat(Y_vals(i, :),Yn,1)).^2/sum(weights(i, :)));
+        Y_errs(i, :) = Y_errs(i, :)/sqrt(sum(weights(i, :) > .3));       
     end
     errorbar(repmat(X', 1, size(Y,2)), Y_vals, Y_errs);    
 end
+
+dens = sum(weights, 2)';
+ca = axis;
+hold on;
+imagesc(X, ca(3):0.04:ca(3)+.05, dens, [0, max(dens)]);
+colorbar;
+axis(ca);
+
 
 if (legend_flag)
     legend(remove_repeating_strings(labels), 'Interpreter', 'none');
@@ -202,8 +211,9 @@ function weights = compute_weights(points, loc, type, factor)
         weights = ((2*pi*(std_dev^2))^(-1))*exp(-.5*((points - loc)/std_dev).^2);
     
     else % default is strcmpi('gaussian', type)
-        weights = ((2*pi*(min_std_dev)^2)^(-1))*exp(-.5*((points - loc)/min_std_dev).^2); 
+        weights = ((2*pi*(min_std_dev)^2)^(-1))*exp(-.5*((points - loc)/min_std_dev).^2);
     end
+% 	weights = mynormalize(weights(:), 100);
 end
 
 function ind = minind(x)
