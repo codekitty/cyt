@@ -4145,6 +4145,56 @@ function flocked_data = flock(data)
     end
 
 end
+function create_cluster_means()
+    handles = gethand; % GUI handles to retrieve info from gui as below
+
+    selected_channel = get(handles.lstChannels, 'Value'); % ---------------
+
+    session_data  = retr('sessionData'); % all data
+    gates         = retr('gates'); 
+    gate_context  = retr('gateContext'); % indices currently selected
+    channel_names = retr('channelNames');
+
+	data = session_data(gate_context, :);
+    grouping = session_data(gate_context, selected_channel);
+    
+    selection = questdlg('Use normalized means?' ,...
+                     'Normalize',...
+                     'Yes','No','Yes');
+    if strcmp(selection,'Yes')
+        data = mynormalize(data, 99);
+        data(:, selected_channel) = grouping;
+    end
+    
+	cluster_ids = unique(grouping)';
+    centers = zeros(length(cluster_ids), size(session_data, 2));
+    i=0;
+    for c=cluster_ids
+        i = i+1;
+        cluster_inds = find(grouping==c);
+        centers(i, :) = mean(data(cluster_inds, :));
+    end
+
+    samplePercent = countmember(cluster_ids, grouping);
+    samplePercent = samplePercent./max(samplePercent);
+      
+    session_data(end+1:end+size(centers,1), :) = centers;
+    put('sessionData', session_data);
+    
+    
+    cluster_gate_inds = size(session_data, 1)-(size(centers,1)-1):size(session_data, 1);
+    
+    add_gate(sprintf('clusters - %s',...
+        channel_names{selected_channel}),...
+        cluster_gate_inds,...
+        channel_names);
+
+    addChannels({'sample percent', 'sample size'},...
+        [countmember(cluster_ids, grouping)' samplePercent'],...
+        cluster_gate_inds,...
+        size(gates, 1)+1);
+
+end
 % ------------
 % add your own code here. please refer to examples below.
 % ------------
@@ -4160,6 +4210,60 @@ function openEndedAction
     gate_context = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
     
+        create_cluster_means;
+    return;
+    % create a knn graph and export cluster means to graphml
+    [s,v] = listdlg('PromptString','Select a cluster channel:',...
+            'SelectionMode','single',...
+            'InitialValue', length(channel_names),...
+            'ListString',channel_names);
+    if ~v
+        return;
+    end
+    cluster_channel = s;
+    
+    data = session_data(gate_context, selected_channels);
+    grouping = session_data(gate_context, cluster_channel);
+    
+    selection = questdlg('Use normalized means?' ,...
+                     'Normalize',...
+                     'Yes','No','Yes');
+    if strcmp(selection,'Yes')
+        data = mynormalize(data, 99);
+    end
+
+    cluster_ids = unique(grouping)';
+    centers = zeros(length(cluster_ids), length(selected_channels));
+    i=0;
+    for c=cluster_ids
+        i = i+1;
+        cluster_inds = find(grouping==c);
+        centers(i, :) = mean(data(cluster_inds, :));
+    end
+    
+    dists         = pdist2(centers, centers, 'euclidean','Smallest',3);
+    dists         = 1 - dists./max(max(dists));
+    
+    sampleID      = cluster_ids;
+    samplePercent = countmember(cluster_ids, grouping);
+    samplePercent = samplePercent./max(samplePercent);
+    means         = centers;
+    names         = channel_names(selected_channels);
+    
+    node_names  = cell(1, length(cluster_ids));
+    for i = 1:length(cluster_ids)
+        for ch=1:length(selected_channels)
+            node_names{i} = sprintf('%s %s=%g ', node_names{i}, channel_names{selected_channels(ch)}, centers(i, ch));
+        end
+    end
+    
+	coeff = pca(means,2);
+	scatter_by_point(coeff(:,1), coeff(:,2), cluster_ids', floor(samplePercent*2000)); %plotting
+    axis([-1 1 -1 1])
+
+%   write_graphml(dists, sampleID, samplePercent, means, names, node_names);
+    
+    return;
     
     % create a knn graph and export cluster means to graphml
     [s,v] = listdlg('PromptString','Select a cluster channel:',...
