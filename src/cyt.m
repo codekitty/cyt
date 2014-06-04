@@ -1014,23 +1014,66 @@ function plot_sample_clusters(cluster_channel)
 
     
     %find plot method, 1=Heat map, 2=Pie chart, 3=tSNE
-    plot_type      = get(handles.popSamplePlotOptions, 'Value');
+    %plot_type      = get(handles.popSamplePlotOptions, 'Value');
+    
+    %finding plot type
+    plot_types = get(handles.popSamplePlotOptions, 'String');
+    plot_type = plot_types(get(handles.popSamplePlotOptions, 'Value'));
 
-    %if plot type is heat map
-    if plot_type == 1,
+    %plot types are:
+%     Heat map: Mean
+%     Heat map: Distance
+%     Pie chart
+%     tSNE map
+%     Single cluster
+
+    
+    
+    if strcmp(plot_type, 'Heat map: Mean')
+        
+        %finding mean values of marker levels for each cluster
+        marker_means = zeros(length(unique(session_data(gate_context, cluster_channel))), length(selected_channels));
+        data = session_data(gate_context, selected_channels);
+        
+        %looping through clusters
+        clusters_in_sample = unique(session_data(gate_context, cluster_channel));
+        for i=1:length(clusters_in_sample)
+            marker_means(i,:) = mean(data(session_data(gate_context, cluster_channel)==clusters_in_sample(i),:));
+        end
+            
+        %find percentage of cells belonging to each cluster
+        cells_pr_cluster = countmember(unique(session_data(gate_context, cluster_channel)),session_data(gate_context,cluster_channel))/length(gate_context);
+                
+        %plot heat map
+        %subplot(10,1,1:9), imagesc(hl_L2_dist, [heat_min,heat_max]);
+        subplot(10,1,1:9), imagesc(marker_means);
+        %set(title(strcat('Sample ', mat2str(p), ': L2 + higher/lower than median')));
+        set(gca, 'Position', [0.18,0.27,0.8,0.66]);
+        set(gca, 'ytick', 1:length(unique(session_data(gate_context, cluster_channel))));
+        y_labs = strcat(strread(num2str(unique(session_data(gate_context, cluster_channel))'), '%s'),' (',strread(num2str(cells_pr_cluster'), '%s'),')');
+        set(gca, 'Yticklabel', y_labs);
+        set(gca, 'xtick', []);
+        colormap(interpolate_colormap(othercolor('YlOrBr9'), 64));
+        colorbar;
+        xticklabel_rotate([1:length(selected_channels)],90,channel_names(selected_channels));
+        
+        
+    elseif strcmp(plot_type,'Heat map: Distance')
         %calculate data for heat map
-        tic;
-        [hl_L2_dist] = L2_dist_heatmap_data(session_data(gate_context, selected_channels), session_data(gate_context, cluster_channel));
-        disp(sprintf('L2 dist heatmap computed: %gs',toc));
-
+        
+        %using SPR
+        
+        
+        %using L2 distance
+        SPR_distances = SPR_dist_heatmap(session_data(gate_context, selected_channels), session_data(gate_context, cluster_channel), 3);
 
         %find percentage of cells belonging to each cluster
         cells_pr_cluster = countmember(unique(session_data(gate_context, cluster_channel)),session_data(gate_context,cluster_channel))/length(gate_context);
         
-        heat_min = min(min(hl_L2_dist));
-        heat_max = max(max(hl_L2_dist));
+        heat_min = min(min(SPR_distances));
+        heat_max = max(max(SPR_distances));
         
-        %scaling colors so that zero will always be black
+        %scaling colors so that zero will always be white
         if abs(heat_min) > heat_max,
             heat_max = abs(heat_min);
         elseif heat_min < 0,
@@ -1046,21 +1089,67 @@ function plot_sample_clusters(cluster_channel)
             color_map = color_map_creator('rg');
         end
         
-        
         %plot heat map
-        subplot(10,1,1:9), imagesc(hl_L2_dist, [heat_min,heat_max]);
+        subplot(10,1,1:9), imagesc(SPR_distances, [heat_min,heat_max]);
         %set(title(strcat('Sample ', mat2str(p), ': L2 + higher/lower than median')));
         set(gca, 'Position', [0.18,0.27,0.8,0.66]);
-        set(gca, 'ytick', unique(session_data(gate_context, cluster_channel)));
+        set(gca, 'ytick', 1:length(unique(session_data(gate_context, cluster_channel))));
         y_labs = strcat(strread(num2str(unique(session_data(gate_context, cluster_channel))'), '%s'),' (',strread(num2str(cells_pr_cluster'), '%s'),')');
         set(gca, 'Yticklabel', y_labs);
         set(gca, 'xtick', []);
         colormap(color_map);
         colorbar;
         xticklabel_rotate([1:length(selected_channels)],90,channel_names(selected_channels));
-    
+        
+
+
+
+%     elseif strcmp(plot_type,'Heat map: Distance')
+%         %calculate data for heat map
+%         
+%        
+%         
+%         %using L2 distance
+%         hl_L2_dist = L2_dist_heatmap_data(session_data(gate_context, selected_channels), session_data(gate_context, cluster_channel));
+%         disp(sprintf('L2 dist heatmap computed: %gs',toc));
+% 
+%         %find percentage of cells belonging to each cluster
+%         cells_pr_cluster = countmember(unique(session_data(gate_context, cluster_channel)),session_data(gate_context,cluster_channel))/length(gate_context);
+%         
+%         heat_min = min(min(hl_L2_dist));
+%         heat_max = max(max(hl_L2_dist));
+% 
+%         %scaling colors so that zero will always be white
+%         if abs(heat_min) > heat_max,
+%             heat_max = abs(heat_min);
+%         elseif heat_min < 0,
+%             heat_min = -heat_max;
+%         end
+%         
+%         %defining color map
+%         color = get(handles.popSampleHeatColor, 'Value');
+%         
+%         if color == 1,
+%             color_map = interpolate_colormap(redbluecmap, 64);
+%         elseif color == 2,
+%             color_map = color_map_creator('rg');
+%         end
+%         
+%         
+%         %plot heat map
+%         subplot(10,1,1:9), imagesc(hl_L2_dist, [heat_min,heat_max]);
+%         %set(title(strcat('Sample ', mat2str(p), ': L2 + higher/lower than median')));
+%         set(gca, 'Position', [0.18,0.27,0.8,0.66]);
+%         set(gca, 'ytick', 1:length(unique(session_data(gate_context, cluster_channel))));
+%         y_labs = strcat(strread(num2str(unique(session_data(gate_context, cluster_channel))'), '%s'),' (',strread(num2str(cells_pr_cluster'), '%s'),')');
+%         set(gca, 'Yticklabel', y_labs);
+%         set(gca, 'xtick', []);
+%         colormap(color_map);
+%         colorbar;
+%         xticklabel_rotate([1:length(selected_channels)],90,channel_names(selected_channels));
+%     
     %if plot type is pie chart
-    elseif plot_type == 2,
+    elseif strcmp(plot_type,'Pie chart'),
         
         %find percentage of cells belonging to each cluster
         cells_pr_cluster = countmember(unique(session_data(gate_context, cluster_channel)),session_data(gate_context,cluster_channel))/length(gate_context);
@@ -1070,7 +1159,7 @@ function plot_sample_clusters(cluster_channel)
         colormap(distinguishable_colors(length(unique(session_data(gate_context,cluster_channel)))));
     
     %if plot type is tSNE map
-    elseif plot_type == 3,
+    elseif strcmp(plot_type,'tSNE map')
         
         if length(gate_context) > 10000,
             inds = randsample(gate_context,10000);    %subsample if gate context is larger than 10,000
@@ -1090,7 +1179,7 @@ function plot_sample_clusters(cluster_channel)
         caxis(clim);    %changing labels on colorbar
     
     %if plot type is single cluster
-    elseif plot_type == 4,
+    elseif strcmp(plot_type, 'Single cluster')
         unique_clusters = unique(session_data(:,cluster_channel));
         
         if ismember(0,unique_clusters),
@@ -1164,14 +1253,14 @@ function plot_single_cluster(current_cluster)
     if plot_type == 1,  %marker density
         
         
-        L2_dist = L2_dist_heatmap_data(session_data(gate_context, selected_channels), session_data(gate_context, cluster_channel));
-        L2_dist = L2_dist.*sign(L2_dist);   %changing all negative values to positive values (ie changing to just L2)
+        %L2_dist = L2_dist_heatmap_data(session_data(gate_context, selected_channels), session_data(gate_context, cluster_channel));
+        %L2_dist = L2_dist.*sign(L2_dist);   %changing all negative values to positive values (ie changing to just L2)
 
-        %L2_density_acceptance = percentile_marker_significance(L2_dist, 0.9);    %finding markers whos L2 distance is higher than threshold for significance
-        %L2_density_acceptance = L2_marker_significance(L2_dist);    %finding markers whos L2 distance is higher than threshold for significance
-
-        %sig_markers = L2_density_acceptance(current_cluster,:);
-        [~,sig_markers_rank] = sort(L2_dist(current_cluster,:), 'descend');
+        SPR_distances = SPR_dist_heatmap(session_data(gate_context, selected_channels), session_data(gate_context, cluster_channel), 3);
+        SPR_distances = SPR_distances.*sign(SPR_distances); %changing all negative values to positive so that markers where distributions are most different can be found
+        
+        %[~,sig_markers_rank] = sort(L2_dist(current_cluster,:), 'descend');
+        [~,sig_markers_rank] = sort(SPR_distances(current_cluster,:), 'descend');
         
 %         if sum(sig_markers) == 0,   %if no significant markers are found for this cluster
 %             fprintf(strcat('No significant markers were found for cluster:',mat2str(current_cluster),'\n'));
@@ -1200,7 +1289,7 @@ function plot_single_cluster(current_cluster)
         for k=1:top;   %looping through significant marker channels
             marker = sig_markers_rank(k);
             [whole_fs(k,:),whole_ixs(k,:)] = ksdensity(session_data(gate_context,selected_channels(marker)));    %density of all clusters
-            [cluster_fs(k,:),cluster_ixs(k,:)] = ksdensity(session_data(session_data(gate_context,cluster_channel) == current_cluster,selected_channels(marker)));
+            [cluster_fs(k,:),cluster_ixs(k,:)] = ksdensity(session_data(session_data(gate_context,cluster_channel) == current_cluster,selected_channels(marker)));  %density of curent cluster
 
         end
         
@@ -1235,10 +1324,11 @@ function plot_single_cluster(current_cluster)
         end
         
         %calculating input to plots
-        hl_L2_dist = L2_dist_heatmap_data(session_data(gate_context, selected_channels), session_data(gate_context, cluster_channel));
-        
-        heat_min = min(min(hl_L2_dist));
-        heat_max = max(max(hl_L2_dist));
+        %hl_L2_dist = L2_dist_heatmap_data(session_data(gate_context, selected_channels), session_data(gate_context, cluster_channel));
+        SPR_distances = SPR_dist_heatmap(session_data(gate_context, selected_channels), session_data(gate_context, cluster_channel), 3);
+
+        heat_min = min(min(SPR_distances));
+        heat_max = max(max(SPR_distances));
         
         %scaling colors so that zero will always be black
         if abs(heat_min) > heat_max,
@@ -1254,14 +1344,14 @@ function plot_single_cluster(current_cluster)
         
         
         %plotting
-        subplot(40,1,1:4), imagesc(hl_L2_dist(current_cluster,:), [heat_min,heat_max]);
+        subplot(40,1,1:4), imagesc(SPR_distances(current_cluster,:), [heat_min,heat_max]);
         colormap(color_map);
         set(gca, 'Ytick', []);
         set(gca, 'Xtick', []);
         %colorbar;
         %cb=colorbar;
         %set(cb,'YTick',[heat_min,heat_max]) 
-        set(title('Signed L2 distance between cluster and whole sample distribution'));
+        set(title('Distance between cluster distribution and whole sample distribution'));
 
         freezeColors;
         cbfreeze(colorbar);
@@ -1547,7 +1637,7 @@ function plot_meta_clusters(cluster_channel)
         ylabs = [];
         
         for i=1:length(selected_gates),   %looping through gates
-            heat = L2_dist_heatmap_data(session_data(gate_context(inds{i}), selected_channels), session_data(gate_context(inds{i}), cluster_channel));
+            heat = SPR_dist_heatmap(session_data(gate_context(inds{i}), selected_channels), session_data(gate_context(inds{i}), cluster_channel), 3);
             heatmap_data = vertcat(heatmap_data,heat(cluster_mapping(cluster_mapping(:,1) == current_meta & cluster_mapping(:,3) == i,4),:));
             ylabs = vertcat(ylabs,strcat(gate_names(i),'(',strread(num2str(cluster_mapping(cluster_mapping(:,1) == current_meta & cluster_mapping(:,3) == i,4)'), '%s'),')'));
         end

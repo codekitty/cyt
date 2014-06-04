@@ -1,8 +1,11 @@
 function scatter_by_point(x, y, color_var, dot_size)
     
     %figure;
-    %x_lim = [min(x)-min(x)/20,max(x)+max(x)/20];
-    %y_lim = [min(y)-min(y)/20, max(y)+max(y)/20];
+    x_lim = [min(x)-min(x)/20,max(x)+max(x)/20];
+    y_lim = [min(y)-min(y)/20, max(y)+max(y)/20];
+    
+    x_lim = [min(x)-(max(x)-min(x))*0.03, max(x)+(max(x)-min(x))*0.03];
+    y_lim = [min(y)-(max(y)-min(y))*0.03, max(y)+(max(y)-min(y))*0.03];
     
     colors = distinguishable_colors(max(color_var));
     
@@ -10,8 +13,8 @@ function scatter_by_point(x, y, color_var, dot_size)
 
         scatter(x(i),y(i), dot_size(i), colors(color_var(i),:), 'fill');
 
-        %xlim(x_lim);
-        %ylim(y_lim);
+        xlim(x_lim);
+        ylim(y_lim);
         hold all;
         
     end

@@ -17,10 +17,12 @@ function [hl_L2_dist] = L2_dist_heatmap_data(gate_data, cluster_channel)
     n_clusters = length(unique(cluster_channel));  %finding number of clusters in gate
     hl_median = zeros(n_clusters, length(gate_medians)); %defining matrix for storing above/below median information (NxM, N=clusters, M=markers)
 
+    clusters_in_sample = unique(cluster_channel);
+
     %determening if median for cluster for for each channel is higher/lower than median across clusters
-    for i=unique(cluster_channel)',  %lopping through clusters
+    for i=1:length(unique(clusters_in_sample)),  %lopping through clusters
         for j=1:size(gate_data,2),     %looping through markers
-            m = median(gate_data(cluster_channel == i, j)); %median for marker in cluster
+            m = median(gate_data(cluster_channel == clusters_in_sample(i), j)); %median for marker in cluster
             if m < gate_medians(j),
                 t = -1;
             elseif m == gate_medians(j),
@@ -35,15 +37,15 @@ function [hl_L2_dist] = L2_dist_heatmap_data(gate_data, cluster_channel)
 
     % L2 as measure of distance between cluster and whole population
     L2_dist = zeros(n_clusters, size(gate_data,2));
-
+    
     for j=1:size(gate_data,2),  %looping through each marker
 
         %distribution for whole population for marker
         [P_total,IX]=ksdensity(gate_data(:,j));
 
         %loop through each cluster and find distance to whole population
-        for i=unique(cluster_channel)',
-            [P_cluster]=ksdensity(gate_data(cluster_channel==i,j),IX);
+        for i=1:length(clusters_in_sample),
+            [P_cluster]=ksdensity(gate_data(cluster_channel==clusters_in_sample(i),j),IX);
             L2_dist(i,j)=norm(P_total-P_cluster, 2);
         end
     end
