@@ -110,18 +110,20 @@ if (~show_error)
 else
     for i=1:num_locs
         Y_errs(i, :) = sqrt(weights(i, :)*(Y-repmat(Y_vals(i, :),Yn,1)).^2/sum(weights(i, :)));
-        Y_errs(i, :) = Y_errs(i, :)/sqrt(sum(weights(i, :) > .3));       
+        Y_errs(i, :) = Y_errs(i, :)/sqrt(sum(weights(i, :) > .1));       
     end
     errorbar(repmat(X', 1, size(Y,2)), Y_vals, Y_errs);    
 end
-
+try
 dens = sum(weights, 2)';
 ca = axis;
 hold on;
 imagesc(X, ca(3):0.04:ca(3)+.05, dens, [0, max(dens)]);
 colorbar;
 axis(ca);
-
+catch e
+disp(getReport(e,'extended'));
+end
 
 if (legend_flag)
     legend(remove_repeating_strings(labels), 'Interpreter', 'none');

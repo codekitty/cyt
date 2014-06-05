@@ -1884,8 +1884,15 @@ function hPlot=plotScatter
         else
             clr = distinguishable_colors(numel(selected_gates));
         end
-               % TODO TODO 
-        myplotclr(vX, vY, vZ, vColor, 'o', clr, [min(vColor), max(vColor)], nSelChannels == 3);
+        
+            vColor_discrete = vColor;
+            colors = unique(vColor)';
+            for ci=1:numel(colors);
+                vColor_discrete(vColor==colors(ci)) = ci;
+            end
+
+        
+        myplotclr(vX, vY, vZ, vColor_discrete, 'o', clr, [min(vColor_discrete), max(vColor_discrete)], nSelChannels == 3);
         box on;
         colorbar off;
 
@@ -1950,8 +1957,14 @@ function hPlot=plotScatter
                     end
                 end
 
+            vColor_discrete = vColor;
+            colors = unique(vColor)';
+            for ci=1:numel(colors);
+                vColor_discrete(vColor==colors(ci)) = ci;
+            end
+            
             % plot 
-            myplotclr(vX, vY, vZ, vColor, 'o', clr, [min(vColor), max(vColor)], false)
+            myplotclr(vX, vY, vZ, vColor_discrete, 'o', clr, [min(vColor_discrete), max(vColor_discrete)], false)
             colorbar off;
             hl=legend(cellfun(@(n)(num2str(n)), num2cell(unique(vColor)), 'UniformOutput', false));                    
 %               gscatter(vX, vY ,vColor, clr, '.', get(0, 'DefaultLineMarkerSize'), doleg);

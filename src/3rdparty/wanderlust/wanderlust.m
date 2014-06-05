@@ -287,6 +287,13 @@ end
             traj( idx, : ) = traj( idx, : ) + idx_val;
         end
     end
+    
+    order_land = sort(traj(1, l)); % grab start's perspective
+    for i=2:length(l)
+        idx_i = tiedrank(traj(i, l));
+        disp(idx_i);
+        
+    end
 end
 
 
