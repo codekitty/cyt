@@ -1676,6 +1676,166 @@ function plot_meta_clusters(cluster_channel)
     
 end
 
+function generateConditionGates
+
+    %function generates new gates
+    
+    handles = gethand;
+    
+    gates        = retr('gates');
+    sessionData  = retr('sessionData');
+    gate_context = retr('gateContext');
+    selected_channels = get(handles.lstChannels,'Value');
+    gate_names        = get(handles.lstGates, 'String');
+    selected_gates = get(handles.lstGates, 'Value');
+    [~, channel_names] = getSelectedIndices(selected_gates);
+    
+    %find binary channels
+    binary_channels = zeros(size(sessionData,2),1);
+    
+    for i=1:size(sessionData,2)
+%         if sum(sessionData(gate_context, i) == 0 | sessionData(gate_context, i) == 1) == size(sessionData(gate_context,:),1)
+%             binary_channels(i) = 1;
+%         end
+        if all(sessionData(gate_context, i) == 0 | sessionData(gate_context, i) == 1)
+            binary_channels(i) = 1;
+        end
+    end
+    
+    if sum(binary_channels) == 0
+        fprintf('No binary condition channels found. Can not generate new gates\n');
+        return;
+    end
+
+    %run GUI interface
+    params = retr('conditionParams');
+    if (isempty(params))
+        params = [];
+        params.permutations = 1000;
+        params.condition_channels = channel_names(logical(binary_channels));
+        params.inc_markers = channel_names(~logical(binary_channels));
+        params.reference = channel_names(logical(binary_channels));
+    end    
+    put('conditionParams', params);
+
+    params = create_ConditionGatesGUI('params', params);
+    
+     if (isempty(params))
+        return;
+    end
+
+    %generate new gates
+    try
+        
+        %find indexes of channels
+        binary_idx = find(binary_channels == 1);
+        ref_channels = binary_idx(params.reference);
+        cond_channels = binary_idx(params.condition_channels);
+        cond_channels(cond_channels == ref_channels) = [];
+        
+        nonbinary_idx = find(binary_channels == 0);
+        inc_markers = nonbinary_idx(params.inc_markers);
+  
+        
+        %finding indecies for selected gates in sessionData(gate_context
+        inds = {};
+        for i=1:length(selected_gates),
+            inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
+        end
+        
+        %finding new channel names
+        new_channel_names = {'cluster_ID'; 'cell_number'; 'cell_percentage'};
+        new_channel_names = vertcat(new_channel_names, strcat('basal_',channel_names(inc_markers))');
+        
+        selected_data = sessionData(gate_context,:);   %variable only containing data form selected gates
+        
+        for i=1:length(inds)    %looping through samples
+            
+            tic;
+            
+            data = selected_data(inds{i},:);
+            unique_clusters = unique(sessionData(inds{i}, selected_channels));
+            
+            new_gate = zeros(length(unique_clusters), 3+length(inc_markers)*(length(cond_channels)+1)); %one new gate for each sample
+            
+            for j=1:length(unique_clusters) %looping through clusters in sample
+            
+                %adding cluster ID
+                new_gate(j,1) = unique_clusters(j);
+                
+                %adding number of cells in sample belonging to cluster
+                new_gate(j,2) = size(data(data(:,selected_channels) == unique_clusters(j),:),1);
+                
+                %adding percentage of cells in sample belonging to cluster
+                new_gate(j,3) = size(data(data(:,selected_channels) == unique_clusters(j),:),1) / size(data,1);
+                
+                %adding mean marker levels for reference for cluster
+                new_gate(j,4:3+length(inc_markers)) = mean(data(data(:,selected_channels) == unique_clusters(j) * sum(data(:,ref_channels) == 1, 2) == 1,inc_markers));
+                
+                %find 
+                
+                for k=1:length(cond_channels)   %looping through each condition
+                    
+                    if j == 1
+                        new_channel_names = vertcat(new_channel_names, strcat(channel_names(cond_channels(k)),'_',channel_names(inc_markers))');
+                    end
+                    
+                    %finding distances between condition distributions for cluster and basal
+                    distances = zeros(1,length(inc_markers));
+                    
+                    for p=1:length(inc_markers) %looping through markers
+                        cluster_distribution = data(data(:,selected_channels) == unique_clusters(j),inc_markers(p));
+                        reference_distribution = data(logical(sum(data(:,ref_channels) == 1, 2)),inc_markers(p));
+                        
+                        %calculating distance
+                        [score,~,~,~,~] = SPR(reference_distribution, cluster_distribution, str2double(params.permutations));
+                        distances(p) = score;
+                        
+                    end
+                    
+                    new_gate(j, 4+length(inc_markers)*k:3+length(inc_markers)*(k+1)) = distances;
+                    
+                end
+            end
+            
+            fprintf('Computing gate for sample %s. time:%g\n',gate_names{selected_gates(i)}, toc);
+            
+            %adding new gate to GUI
+            tic;
+
+            cluster_gate_inds = size(sessionData, 1)+1:...
+                                size(sessionData, 1)+size(new_gate,1);
+
+            sessionData(end+1:end+size(new_gate,1), :) = 0;
+            put('sessionData', sessionData);
+    
+            add_gate(...
+                strcat(gate_names{selected_gates(i)},'_conditions'),...
+                cluster_gate_inds,...
+                {});
+
+            addChannels(reshape(new_channel_names, 1, numel(new_channel_names)),...
+                new_gate,...
+                cluster_gate_inds,...
+                size(gates, 1)+1);
+            
+            fprintf('Adding gate for sample %s. time:%g\n',gate_names{selected_gates(i)}, toc);
+            
+            
+            %saving gate as fcs file
+            %fca_writefcs(strcat(gate_names{selected_gates(i)},'_conditions.fcs'), new_gate, new_channel_names, new_channel_names);
+            %fca_writefcs(filename, data, marker_names,channel_names)
+            
+        end 
+        
+    catch e
+        uiwait(msgbox(sprintf('Generating condition gates failed: %s', e.message),...
+            'Error','error'));  
+        return;        
+    end
+    
+end
+
 
 
 function hPlot = plotDensity

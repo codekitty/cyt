@@ -1,5 +1,5 @@
-function varargout = create_metaGUI(varargin)
-% MATLAB code for create_meta.fig
+function varargout = create_ConditionGatesGUI(varargin)
+% MATLAB code for create_condition_gates.fig
 %      
 %
 % See also: GUIDE, GUIDATA, GUIHANDLES
@@ -10,8 +10,8 @@ function varargout = create_metaGUI(varargin)
 gui_Singleton = 1;
 gui_State = struct('gui_Name',       mfilename, ...
                    'gui_Singleton',  gui_Singleton, ...
-                   'gui_OpeningFcn', @create_metaGUI_OpeningFcn, ...
-                   'gui_OutputFcn',  @create_metaGUI_OutputFcn, ...
+                   'gui_OpeningFcn', @create_ConditionGatesGUI_OpeningFcn, ...
+                   'gui_OutputFcn',  @create_ConditionGatesGUI_OutputFcn, ...
                    'gui_LayoutFcn',  [] , ...
                    'gui_Callback',   []);
 if nargin && ischar(varargin{1})
@@ -26,7 +26,7 @@ end
 % End initialization code - DO NOT EDIT
 end
 % --- Executes just before interface is made visible.
-function create_metaGUI_OpeningFcn(hObject, eventdata, handles, varargin)
+function create_ConditionGatesGUI_OpeningFcn(hObject, eventdata, handles, varargin)
 % This function has no output args, see OutputFcn.
 % hObject    handle to figure
 % eventdata  reserved - to be defined in a future version of MATLAB
@@ -54,14 +54,11 @@ for i=1:length(varargin)-1
         set(hObject, 'Name', varargin{i+1});
     elseif(strcmp(varargin{i}, 'params'))
         params = varargin{i+1};
-        set(handles.txtNeighbors, 'String', num2str(params.neighbors));
-        metrics = get(handles.pupMetric, 'String');
-        metric = find(strcmpi(metrics, params.metric));
-        set(handles.pupMetric, 'Value', metric);
-        set(handles.lstGates, 'Value', params.selected_gates);
-        %set(handles.lstClusterChannel, 'Value', params.all_channels);
-        set(handles.lstClusterChannel, 'String', params.all_channels);
-
+        set(handles.lstConditionChannels, 'String', params.condition_channels);
+        set(handles.lstReference, 'String', params.reference);
+        set(handles.lstIncMarkers, 'String', params.inc_markers);
+        set(handles.txtPermutations, 'String', params.permutations);
+                
 %     elseif(strcmp(varargin{i}, 'gates'))
 %         set(handles.lstGates, 'String', varargin{i+1});
     end
@@ -112,7 +109,7 @@ set(handles.figure1,'WindowStyle','modal')
 uiwait(handles.figure1);
 end
 % --- Outputs from this function are returned to the command line.
-function varargout = create_metaGUI_OutputFcn(hObject, eventdata, handles)
+function varargout = create_ConditionGatesGUI_OutputFcn(hObject, eventdata, handles)
 % varargout  cell array for returning output args (see VARARGOUT);
 % hObject    handle to figure
 % eventdata  reserved - to be defined in a future version of MATLAB
@@ -160,7 +157,7 @@ end
 % --- Executes on button press in btnRun.
 function btnRun_Callback(hObject, eventdata, handles)
 
-    W = findMetaClusters;
+    W = generateClusterGates;
         
     handles.output = W;
 
@@ -172,19 +169,14 @@ function btnRun_Callback(hObject, eventdata, handles)
     uiresume(handles.figure1);
 end
 
-function W=findMetaClusters
+function W=generateClusterGates
     hgui=getappdata(0,'hwand');
     handles=guihandles(hgui);
-
-    W.selected_gates = get(handles.lstGates, 'Value');
-    W.cluster_channel = get(handles.lstClusterChannel, 'Value');
-    W.neighbors = str2num(get(handles.txtNeighbors, 'String'));
-
-    nMetric = get(handles.pupMetric, 'Value');
-    strMetrics = get(handles.pupMetric, 'String');
-    W.metric = strMetrics{nMetric};
-    W.all_channels = get(handles.lstClusterChannel, 'String');
-            
+    
+    W.condition_channels = get(handles.lstConditionChannels, 'Value');
+    W.inc_markers = get(handles.lstIncMarkers, 'Value');
+    W.reference = get(handles.lstReference, 'Value');
+    W.permutations = get(handles.txtPermutations, 'String');            
     
 end
 
@@ -204,70 +196,70 @@ guidata(hObject, handles);
 uiresume(handles.figure1);
 end
 
-function txtMaxDistance_Callback(hObject, eventdata, handles)
-% hObject    handle to txtMaxDistance (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: get(hObject,'String') returns contents of txtMaxDistance as text
-%        str2double(get(hObject,'String')) returns contents of txtMaxDistance as a double
-end
-
-% --- Executes during object creation, after setting all properties.
-function txtMaxDistance_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to txtMaxDistance (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-end
-
-
-function txtKNeighbors_Callback(hObject, eventdata, handles)
-% hObject    handle to txtKNeighbors (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: get(hObject,'String') returns contents of txtKNeighbors as text
-%        str2double(get(hObject,'String')) returns contents of txtKNeighbors as a double
-end
-
-% --- Executes during object creation, after setting all properties.
-function txtKNeighbors_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to txtKNeighbors (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-end
-
-% --- Executes on selection change in lstChannels.
-function lstChannels_Callback(hObject, eventdata, handles)
-% hObject    handle to lstChannels (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: contents = cellstr(get(hObject,'String')) returns lstChannels contents as cell array
-%        contents{get(hObject,'Value')} returns selected item from lstChannels
-end
-
-% --- Executes during object creation, after setting all properties.
-function lstChannels_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to lstChannels (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: listbox controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-end
+% function txtMaxDistance_Callback(hObject, eventdata, handles)
+% % hObject    handle to txtMaxDistance (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% % Hints: get(hObject,'String') returns contents of txtMaxDistance as text
+% %        str2double(get(hObject,'String')) returns contents of txtMaxDistance as a double
+% end
+% 
+% % --- Executes during object creation, after setting all properties.
+% function txtMaxDistance_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to txtMaxDistance (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% 
+% % Hint: edit controls usually have a white background on Windows.
+% %       See ISPC and COMPUTER.
+% if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+%     set(hObject,'BackgroundColor','white');
+% end
+% end
+% 
+% 
+% function txtKNeighbors_Callback(hObject, eventdata, handles)
+% % hObject    handle to txtKNeighbors (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% % Hints: get(hObject,'String') returns contents of txtKNeighbors as text
+% %        str2double(get(hObject,'String')) returns contents of txtKNeighbors as a double
+% end
+% 
+% % --- Executes during object creation, after setting all properties.
+% function txtKNeighbors_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to txtKNeighbors (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% 
+% % Hint: edit controls usually have a white background on Windows.
+% %       See ISPC and COMPUTER.
+% if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+%     set(hObject,'BackgroundColor','white');
+% end
+% end
+% 
+% % --- Executes on selection change in lstChannels.
+% function lstChannels_Callback(hObject, eventdata, handles)
+% % hObject    handle to lstChannels (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% % Hints: contents = cellstr(get(hObject,'String')) returns lstChannels contents as cell array
+% %        contents{get(hObject,'Value')} returns selected item from lstChannels
+% end
+% 
+% % --- Executes during object creation, after setting all properties.
+% function lstChannels_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to lstChannels (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% 
+% % Hint: listbox controls usually have a white background on Windows.
+% %       See ISPC and COMPUTER.
+% if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+%     set(hObject,'BackgroundColor','white');
+% end
+% end

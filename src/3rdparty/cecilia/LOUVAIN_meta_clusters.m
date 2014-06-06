@@ -16,14 +16,17 @@ function [cluster_mapping, centroids, meta_cluster_channel] = LOUVAIN_meta_clust
     
     for i=1:size(inds,2), %looping through selected gates (samples)
         cluster_mapping = vertcat(cluster_mapping, horzcat(repmat(i,[size(unique(cluster_channel(inds{i}))),1]),unique(cluster_channel(inds{i}))));
+        unique_clusters = unique(cluster_channel(inds{i}));
         
-        for j=1:size(unique(cluster_channel(inds{i})),1), %looping through clusters in gate/sample
+        %for j=1:size(unique(cluster_channel(inds{i})),1), %looping through clusters in gate/sample
+        for j=1:length(unique_clusters), %looping through clusters in gate/sample
+
             d = data(inds{i},:);
             %centroids(k,:) = mean(data(cluster_channel(inds{i}) == j,:));
-            centroids(k,:) = mean(d(cluster_channel(inds{i}) == j,:));
+            centroids(k,:) = mean(d(cluster_channel(inds{i}) == unique_clusters(j),:));
 
             %cluster_sizes(k) = size(data(cluster_channel(inds{i}) == j,:),1) / size(cluster_channel(inds{i}),1);
-            cluster_sizes(k) = size(d(cluster_channel(inds{i}) == j,:),1) / size(cluster_channel(inds{i}),1);
+            cluster_sizes(k) = size(d(cluster_channel(inds{i}) == unique_clusters(j),:),1) / size(cluster_channel(inds{i}),1);
 
             k=k+1;
         end
