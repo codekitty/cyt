@@ -71,8 +71,8 @@ function stop = check_significance( obs, null, alpha )
 null(isnan(null)) = [];
 N = length(null);
 p_ecdf =  sum( null >= obs ) / N;
-sigma = N*p_ecdf*(1-p_ecdf)/N;
+sigma = p_ecdf*(1-p_ecdf)/N;
 lb = p_ecdf - 1.96*sigma;
-% stop if 95% confident that pval is greater than alpha
+% stop if bottom of CI is greater than alpha
 stop = lb > alpha;
     

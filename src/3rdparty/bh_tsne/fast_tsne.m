@@ -58,8 +58,12 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
         theta = 0.5;
     end
     
+    work_dir = pwd;
+    
     [curr_path, ~, ~] = fileparts(mfilename('fullpath'));
     curr_path = [curr_path filesep];
+    
+    cd(curr_path);
     
 
     % Perform the initial dimensionality reduction using PCA
@@ -107,6 +111,8 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
     landmarks = landmarks + 1;              % correct for Matlab indexing
     delete('data.dat');
     delete('result.dat');
+    
+    cd(work_dir);
 end
 
 

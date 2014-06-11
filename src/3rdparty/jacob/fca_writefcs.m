@@ -38,6 +38,13 @@ HeaderStart = 100;
 HeaderStop = HeaderStart + length(fcsheader_main)+100-1;
 DataStart = HeaderStop;
 DataEnd = DataStart+prod(size(data))*4;
+
+%testing if header is too long to be supported by fcs format
+if (numel(num2str(HeaderStop)) > 4)
+    uiwait(msgbox('Unfortunately fcs file format supports up to 9,999 total fcs header characters, you either have to many channels or your channel names are too long\n','error'));               
+    return;
+end
+
 fcsheader_1stline  = sprintf('FCS3.0         %3d    %4d    %4d%8d%8d%8d',HeaderStart,HeaderStop,DataStart,DataEnd,0,0);
 fcsheader_main = [fcsheader_main,'$BEGINDATA\',num2str(DataStart),'\']; 
 fcsheader_main = [fcsheader_main,'$ENDDATA\',num2str(DataEnd),'\']; 

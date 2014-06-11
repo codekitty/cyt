@@ -58,7 +58,7 @@ for i=1:length(varargin)-1
         metrics = get(handles.pupMetric, 'String');
         metric = find(strcmpi(metrics, params.metric));
         set(handles.pupMetric, 'Value', metric);
-        set(handles.lstGates, 'Value', params.selected_gates);
+        set(handles.lstGates, 'String', params.selected_gates);
         %set(handles.lstClusterChannel, 'Value', params.all_channels);
         set(handles.lstClusterChannel, 'String', params.all_channels);
 

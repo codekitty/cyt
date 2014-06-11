@@ -207,6 +207,7 @@ gates = retr('gates');
 regexps = retr('regexps');
 if (isempty(sessionData)) 
     uiwait(msgbox('The session is empty.','Nothing to save','modal'));
+    return;
 end
 
 [filename,pathname,~] = uiputfile('*.mat','Save Session');
@@ -216,6 +217,8 @@ if isequal(filename,0) || isequal(pathname,0)
 end
 
 save([pathname filename], 'sessionData', 'gates', 'regexps'); 
+%save([pathname filename], 'sessionData', 'gates', 'regexps', '-v7.3'); %alternative for data > 2GB
+
 end
 
 function load_session
@@ -334,6 +337,46 @@ function OpenMenuItem_Callback(~, ~, ~)
         gates{1, 2} = 1:size(sessionData,1);
         gates{1, 3} = strcat({'channel '},int2str((1:size(sessionData,2)).'))';
         gates{1, 4} = files{1}; % opt cell column to hold filename
+    elseif (strcmp(ext, '.csv'))
+
+        hWaitbar = waitbar(0,'reading csv files...');
+        tic
+        
+        
+        %Read in header
+        fids = cellfun(@(f) fopen(f, 'r'), files, 'UniformOutput', false);  %opening files
+        csvheaders = cellfun(@(f) fgetl(f), fids, 'UniformOutput', false);   %readinf first line in file
+        cellfun(@(f) fclose(f), fids, 'UniformOutput', false);  %closing files
+        
+        %Convert  header to cell array
+        csvheaders = cellfun(@(h) regexp(h, '([^,]*)', 'tokens'), csvheaders, 'UniformOutput', false);
+        csvheaders = cellfun(@(h) cat(2, h{:}), csvheaders, 'UniformOutput', false);
+        
+
+        %Read in data    
+        csvdats = cellfun(@(fname) csvread(fname, 1,0), files, 'UniformOutput', false);
+        
+        %Add data to session
+        disp(sprintf('Files loaded: %gs',toc));
+
+        sessionData = zeros(0, size(csvdats{1}, 2));
+        gates = cell(numel(csvdats),4);
+        waitbar(0.5, hWaitbar, 'Adding data to session ...')
+        for i=1:numel(csvdats)
+            
+            [~, csvname, ~] = fileparts(files{i}); 
+            
+            %-- add data to giant matrix
+            currInd = size(sessionData, 1);
+            sessionData(currInd+1:currInd+size(csvdats{i},1), 1:size(csvdats{i},2)) = csvdats{i}(:, :);
+            
+            gates{i, 1} = char(csvname);
+            gates{i, 2} = currInd+1:currInd+size(csvdats{i},1);
+            gates{i, 3} = csvheaders{i};
+%             gates{i, 3} = strcat({'channel '},int2str((1:size(csvdats{i},2)).'))';
+            gates{i, 4} = files{i}; % opt cell column to hold filename
+        end
+        
     else% assume files are fcs format (the only officialy supported format
         
         tic
@@ -1034,12 +1077,41 @@ function plot_sample_clusters(cluster_channel)
         %looping through clusters
         clusters_in_sample = unique(session_data(gate_context, cluster_channel));
         for i=1:length(clusters_in_sample)
-            marker_means(i,:) = mean(data(session_data(gate_context, cluster_channel)==clusters_in_sample(i),:));
+            marker_means(i,:) = mean(data(session_data(gate_context, cluster_channel)==clusters_in_sample(i),:),1);
         end
             
         %find percentage of cells belonging to each cluster
         cells_pr_cluster = countmember(unique(session_data(gate_context, cluster_channel)),session_data(gate_context,cluster_channel))/length(gate_context);
-                
+
+        %find color scheme
+        color = get(handles.popSampleHeatColor, 'Value');
+
+        %finding basis for min and max for color scaling
+        heat_min = min(min(marker_means));
+        heat_max = max(max(marker_means));
+        
+        if color == 1,
+            color_map = interpolate_colormap(redbluecmap, 64);
+            
+            %adjusting heatmap color scaling
+            if abs(heat_min) > heat_max,
+                heat_max = abs(heat_min);
+            elseif heat_min < 0,
+                heat_min = -heat_max;
+            end
+        elseif color == 2,
+            color_map = color_map_creator('rg');
+            
+            %adjusting heatmap color scaling
+            if abs(heat_min) > heat_max,
+                heat_max = abs(heat_min);
+            elseif heat_min < 0,
+                heat_min = -heat_max;
+            end
+        elseif color == 3,
+            color_map = interpolate_colormap(othercolor('YlOrBr9'), 64);
+        end
+        
         %plot heat map
         %subplot(10,1,1:9), imagesc(hl_L2_dist, [heat_min,heat_max]);
         subplot(10,1,1:9), imagesc(marker_means);
@@ -1049,7 +1121,7 @@ function plot_sample_clusters(cluster_channel)
         y_labs = strcat(strread(num2str(unique(session_data(gate_context, cluster_channel))'), '%s'),' (',strread(num2str(cells_pr_cluster'), '%s'),')');
         set(gca, 'Yticklabel', y_labs);
         set(gca, 'xtick', []);
-        colormap(interpolate_colormap(othercolor('YlOrBr9'), 64));
+        colormap(color_map);
         colorbar;
         xticklabel_rotate([1:length(selected_channels)],90,channel_names(selected_channels));
         
@@ -1081,8 +1153,24 @@ function plot_sample_clusters(cluster_channel)
         
         if color == 1,
             color_map = interpolate_colormap(redbluecmap, 64);
+            
+            %adjusting heatmap color scaling
+            if abs(heat_min) > heat_max,
+                heat_max = abs(heat_min);
+            elseif heat_min < 0,
+                heat_min = -heat_max;
+            end
         elseif color == 2,
             color_map = color_map_creator('rg');
+            
+            %adjusting heatmap color scaling
+            if abs(heat_min) > heat_max,
+                heat_max = abs(heat_min);
+            elseif heat_min < 0,
+                heat_min = -heat_max;
+            end
+        elseif color == 3,
+            color_map = interpolate_colormap(othercolor('YlOrBr9'), 64);
         end
         
         %plot heat map
@@ -1164,7 +1252,12 @@ function plot_sample_clusters(cluster_channel)
         end
         
         clusters = session_data(inds, cluster_channel);
-        tsne_out = fast_tsne(session_data(inds,selected_channels)); %running tSNE
+        
+        perplexity = [];
+        if(size(clusters,1) < 100)  %100 is arbitrary
+            perplexity = 2;
+        end
+        tsne_out = fast_tsne(session_data(inds,selected_channels),[], perplexity); %running tSNE
         
         %plotting scatterplot
         colors = distinguishable_colors(length(unique(clusters)));
@@ -1405,7 +1498,7 @@ function createMeta
         params = [];
         params.neighbors = 2;
         params.metric = 'euclidean';
-        params.selected_gates = numel(gate_names);
+        params.selected_gates = gate_names;
         params.all_channels = channel_names;
         params.cluster_channel = 1;
         %params.all_channels = numel(channel_names');
@@ -1491,7 +1584,7 @@ function plot_meta_clusters(cluster_channel)
     
     %find cluster channel
     cluster_channel      = get(handles.lstBasisOfMetaChannel, 'Value');
-    if isempty(meta_channel) || ~isDiscrete(cluster_channel) || length(unique(session_data(gate_context, cluster_channel))) > 500, %if channels is empty or channel is not discrete or the number of clusters is too large
+    if isempty(cluster_channel) || ~isDiscrete(cluster_channel) || length(unique(session_data(gate_context, cluster_channel))) > 500, %if channels is empty or channel is not discrete or the number of clusters is too large
 %         [s,v] = listdlg('PromptString','Select a cluster channel:',...
 %                 'SelectionMode','single',...
 %                 'InitialValue', initClusterSelection,...
@@ -1688,12 +1781,20 @@ function generateConditionGates
     selected_channels = get(handles.lstChannels,'Value');
     gate_names        = get(handles.lstGates, 'String');
     selected_gates = get(handles.lstGates, 'Value');
-    [~, channel_names] = getSelectedIndices(selected_gates);
+    channel_names = retr('channelNames');
+    
+    %test that selected channel is discrete => can be cluster channel
+    %takes too long for large datasets
+%     if ~isDiscrete(sessionData(gate_context,selected_channels)) || length(unique(session_data(gate_context, selected_channels))) > 500
+%         fprintf('Selected channel is not discrete, condition gates could not be generated\n')
+%         return;
+%     end
+    
     
     %find binary channels
-    binary_channels = zeros(size(sessionData,2),1);
+    binary_channels = zeros(length(channel_names),1);
     
-    for i=1:size(sessionData,2)
+    for i=1:length(channel_names)
 %         if sum(sessionData(gate_context, i) == 0 | sessionData(gate_context, i) == 1) == size(sessionData(gate_context,:),1)
 %             binary_channels(i) = 1;
 %         end
@@ -1722,10 +1823,19 @@ function generateConditionGates
     
      if (isempty(params))
         return;
+     end
+
+    %ask for path to put session data files once new gates have been computed
+    pathname = uigetdir('dialog_title', 'Save new gates in folder');
+
+    if isequal(pathname,0)   %eg if user pressed cancel
+        return;
     end
 
+    
     %generate new gates
     try
+        
         
         %find indexes of channels
         binary_idx = find(binary_channels == 1);
@@ -1737,7 +1847,7 @@ function generateConditionGates
         inc_markers = nonbinary_idx(params.inc_markers);
   
         
-        %finding indecies for selected gates in sessionData(gate_context
+        %finding indecies for selected gates in sessionData(gate_context,:)
         inds = {};
         for i=1:length(selected_gates),
             inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
@@ -1750,10 +1860,12 @@ function generateConditionGates
         selected_data = sessionData(gate_context,:);   %variable only containing data form selected gates
         
         for i=1:length(inds)    %looping through samples
-            
             tic;
+
+            gates = retr('gates');  %gates is changed for each loop, should be updated
             
-            data = selected_data(inds{i},:);
+            
+            data = selected_data(inds{i},:);    %finding data belonging to sample
             unique_clusters = unique(sessionData(inds{i}, selected_channels));
             
             new_gate = zeros(length(unique_clusters), 3+length(inc_markers)*(length(cond_channels)+1)); %one new gate for each sample
@@ -1769,14 +1881,16 @@ function generateConditionGates
                 %adding percentage of cells in sample belonging to cluster
                 new_gate(j,3) = size(data(data(:,selected_channels) == unique_clusters(j),:),1) / size(data,1);
                 
+                %tic;
                 %adding mean marker levels for reference for cluster
                 new_gate(j,4:3+length(inc_markers)) = mean(data(data(:,selected_channels) == unique_clusters(j) * sum(data(:,ref_channels) == 1, 2) == 1,inc_markers));
+                %fprintf('Computing basal means sample %s, cluster %s. time:%g\n',gate_names{selected_gates(i)}, mat2str(unique_clusters(j)), toc);
+
                 
                 %find 
-                
                 for k=1:length(cond_channels)   %looping through each condition
                     
-                    if j == 1
+                    if j == 1 && i == 1 %if this is first sample and first cluster (channel names the same for all samples and all clusters)
                         new_channel_names = vertcat(new_channel_names, strcat(channel_names(cond_channels(k)),'_',channel_names(inc_markers))');
                     end
                     
@@ -1784,50 +1898,62 @@ function generateConditionGates
                     distances = zeros(1,length(inc_markers));
                     
                     for p=1:length(inc_markers) %looping through markers
-                        cluster_distribution = data(data(:,selected_channels) == unique_clusters(j),inc_markers(p));
-                        reference_distribution = data(logical(sum(data(:,ref_channels) == 1, 2)),inc_markers(p));
+                        cluster_distribution = data(data(:,selected_channels) == unique_clusters(j) * data(:,cond_channels(k)) == 1,inc_markers(p));
+                        reference_distribution = data(data(:,selected_channels) == unique_clusters(j) * sum(data(:,ref_channels) == 1, 2) >= 1,inc_markers(p));
                         
                         %calculating distance
-                        [score,~,~,~,~] = SPR(reference_distribution, cluster_distribution, str2double(params.permutations));
+                        perm = str2double(params.permutations);
+                        %tic;
+                        [score,~,~,~,~] = SAER(reference_distribution, cluster_distribution, perm);
+                        %fprintf('Computing distance condition %s, marker %s. time:%g\n',channel_names{cond_channels(k)}, channel_names{inc_markers(p)}, toc);
+
                         distances(p) = score;
+
                         
                     end
                     
                     new_gate(j, 4+length(inc_markers)*k:3+length(inc_markers)*(k+1)) = distances;
                     
                 end
+
             end
             
-            fprintf('Computing gate for sample %s. time:%g\n',gate_names{selected_gates(i)}, toc);
+            %fprintf('Computing gate for sample %s. time:%g\n',gate_names{selected_gates(i)}, toc);
             
             %adding new gate to GUI
-            tic;
+            %tic;
 
-            cluster_gate_inds = size(sessionData, 1)+1:...
-                                size(sessionData, 1)+size(new_gate,1);
-
-            sessionData(end+1:end+size(new_gate,1), :) = 0;
-            put('sessionData', sessionData);
-    
-            add_gate(...
-                strcat(gate_names{selected_gates(i)},'_conditions'),...
-                cluster_gate_inds,...
-                {});
-
-            addChannels(reshape(new_channel_names, 1, numel(new_channel_names)),...
-                new_gate,...
-                cluster_gate_inds,...
-                size(gates, 1)+1);
+%             tic;
+%             cluster_gate_inds = size(sessionData, 1)+1:...
+%                                 size(sessionData, 1)+size(new_gate,1);
+%             fprintf('Finding new gate indecies %s.time:%g\n\n',gate_names{selected_gates(i)}, toc);
+%             
+%             tic;
+%             sessionData(end+1:end+size(new_gate,1), :) = 0;
+%             put('sessionData', sessionData);
+%             fprintf('Adding to session data %s. time:%g\n\n',gate_names{selected_gates(i)}, toc);
+%             
+%             tic;
+%             add_gate(...
+%                 strcat(gate_names{selected_gates(i)},'_conditions'),...
+%                 cluster_gate_inds,...
+%                 {});
+%             fprintf('Adding gate %s. time:%g\n\n',gate_names{selected_gates(i)}, toc);
+%             
+%             tic;
+%             addChannels(reshape(new_channel_names, 1, numel(new_channel_names)),...
+%                 new_gate,...
+%                 cluster_gate_inds,...
+%                 size(gates, 1)+1);
+%             fprintf('Adding channels %s. time:%g\n\n',gate_names{selected_gates(i)}, toc);
             
-            fprintf('Adding gate for sample %s. time:%g\n',gate_names{selected_gates(i)}, toc);
+            file_name = strcat(pathname, '/', gate_names{selected_gates(i)},'_condition.csv');
+            csvwrite_with_headers(file_name,new_gate,new_channel_names);
             
-            
-            %saving gate as fcs file
-            %fca_writefcs(strcat(gate_names{selected_gates(i)},'_conditions.fcs'), new_gate, new_channel_names, new_channel_names);
-            %fca_writefcs(filename, data, marker_names,channel_names)
+            fprintf('Computing and saving gate for sample %s. time:%g\n\n',gate_names{selected_gates(i)}, toc);
             
         end 
-        
+            
     catch e
         uiwait(msgbox(sprintf('Generating condition gates failed: %s', e.message),...
             'Error','error'));  
