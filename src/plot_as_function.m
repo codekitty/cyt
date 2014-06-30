@@ -40,6 +40,8 @@ rank = false;
 make_distribution_movie = false;
 smoothness_factor = 0.5;
 svGolay = true;
+control_density = false;
+matPatchColors = [0.75 0.75 0.75; 0.6 0.6 0.6; 0 0 1];
 
 for i=1:length(varargin)-1
     if(strcmp(varargin{i},'num_locs'))
@@ -55,6 +57,9 @@ for i=1:length(varargin)-1
         normalize = varargin{i+1};
     elseif(strcmp(varargin{i},'rank'))
         rank = varargin{i+1};
+        if rank
+            control_density = false;
+        end
     elseif(strcmp(varargin{i},'svGolay'))
         svGolay = varargin{i+1};
     elseif(strcmp(varargin{i},'smooth'))
@@ -77,13 +82,36 @@ Yn = size(Y, 1);
 
 % compute a weight for each value (data point), at each plot location
 for i=1:num_locs
-	weights(i, :) = compute_weights(x, (i/num_locs)*x_range, avg_type, smoothness_factor);
+	weights(i, :) = compute_weights(x, (i/num_locs)*x_range+min(x), avg_type, smoothness_factor);
 end
 
 % Compute weighted averages at each location
 X = linspace(min(x), max(x), num_locs);
 Y_vals = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
 
+if control_density
+    dens = sum(weights, 2)';
+    dens = dens./max(dens);
+    dens = floor(dens*10);
+    X = linspace(min(x), max(x), num_locs+sum(dens));
+    Yrow = 0;
+	Y_vals_stretched = zeros(0, size(Y_vals, 2));
+    for densi=1:numel(dens)
+        Yrow = Yrow+1;
+        copies = 0;
+        while copies<=dens(densi)
+            Y_vals_stretched(end+1, :) = Y_vals(Yrow, :);
+            copies = copies+1;
+        end
+    end
+    Y_vals = Y_vals_stretched;
+	
+    % smooth the streching
+    for col=1:size(Y_vals, 2)
+        Y_vals(:, col) = smooth(X, Y_vals(:, col),sqrt(num_locs*2), 'sgolay');
+    end          
+
+end
 
 if (svGolay)  
     for col=1:size(Y_vals, 2)
@@ -91,6 +119,7 @@ if (svGolay)
     end          
 end
 
+Y_vals_orig = Y_vals;
 if (normalize)
     Y_vals = Y_vals-repmat(prctile(Y_vals, 1, 1), size(Y_vals,1),1);
     Y_vals = Y_vals./repmat(prctile((Y_vals), 99, 1),size(Y_vals,1),1);
@@ -99,30 +128,58 @@ end
 matColors = distinguishable_colors(size(Y, 2));
 set(gca, 'ColorOrder', matColors);
 set(0, 'DefaultAxesColorOrder', matColors);
-if (~show_error)
-    plot(X, Y_vals(:, 1), 'Color', matColors(1, :));    
-    if (size(Y, 2)> 1)
-        for col=2:size(Y, 2)
-            hold on;
-            plot(X, Y_vals(:, col), 'Color', matColors(col, :));        
-        end
+
+plot(X, Y_vals(:, 1), 'Color', matColors(1, :));    
+if (size(Y, 2)> 1)
+    for col=2:size(Y, 2)
+        hold on;
+        plot(X, Y_vals(:, col), 'Color', matColors(col, :));        
     end
-else
-    for i=1:num_locs
-        Y_errs(i, :) = sqrt(weights(i, :)*(Y-repmat(Y_vals(i, :),Yn,1)).^2/sum(weights(i, :)));
-        Y_errs(i, :) = Y_errs(i, :)/sqrt(sum(weights(i, :) > .1));       
-    end
-    errorbar(repmat(X', 1, size(Y,2)), Y_vals, Y_errs);    
 end
-try
-dens = sum(weights, 2)';
-ca = axis;
-hold on;
-imagesc(X, ca(3):0.04:ca(3)+.05, dens, [0, max(dens)]);
-colorbar;
-axis(ca);
-catch e
-disp(getReport(e,'extended'));
+if (show_error)
+%         for li=1:num_locs
+%             sl_weights(li, :) = compute_weights(x, (li/num_locs)*x_range, 'sliding', smoothness_factor);
+%         end
+%         quantiles = NaN(num_locs,5);
+%         for bini=1:num_locs
+%             quantiles(bini, :) = quantile(Y(sl_weights(bini, :), 1),[0.25 0.375 0.5 0.625 0.75]);
+%         end
+
+    for i=1:num_locs
+        
+        %symmetrical for error bars
+        Y_errs(i, :) = weights(i, :)*(((Y-repmat(Y_vals_orig(i, :),Yn,1)-repmat(prctile(Y_vals, 1, 1), size(Y,1),1))./...
+            repmat(prctile((Y_vals_orig), 99, 1),size(Y,1),1))).^2/sum(weights(i, :));        
+%         if ~rank
+%             % TODO figure out a better way because threshhold should change
+%             % according to number of points
+%             Y_errs(i, :) = Y_errs(i, :)/sqrt(sum(weights(i, :) > .1)); 
+%         end
+    end
+    
+    for yi=1:size(Y, 2)
+        % plot light grey background first for variance
+        fill([X, fliplr(X)], [(Y_vals(:, yi)-Y_errs(:, yi))', fliplr((Y_vals(:, yi)+Y_errs(:, yi))')],...
+            matColors(yi,:),'linestyle','none','facealpha',.5);
+
+%     fill([X, fliplr(X)], [quantiles(:, 2)', fliplr((quantiles(:, 4))')],...
+%         matPatchColors(1,:),'linestyle','none','facealpha',.5);
+
+%     errorbar(repmat(X', 1, size(Y,2)), Y_vals, Y_errs);  
+    end
+end
+
+if ~(rank || control_density)    
+    try
+    dens = sum(weights, 2)';
+    ca = axis;
+    hold on;
+    imagesc(X, ca(3):0.04:ca(3)+.05, dens, [0, max(dens)]);
+    colorbar;
+    axis(ca);
+    catch e
+    disp(getReport(e,'extended'));
+    end
 end
 
 if (legend_flag)

@@ -2366,14 +2366,14 @@ function hPlot=plotScatter
                 tic
                 hold on;
                 vColors = NaN(length(c), 1);
-                for i = 1:length(c) 
-                    if all(c{i}~=1)   % If at least one of the indices is 1, 
+                for ci = 1:length(c) 
+                    if all(c{ci}~=1)   % If at least one of the indices is 1, 
                                       % then it is an open region and we can't 
                                       % patch that.
-                        in = find(inpoly([vA vB], v(c{i},:)));
+                        in = find(inpoly([vA vB], v(c{ci},:)));
                         if (length(in)>=thresh) 
-                            vColors(i) = mean(vC(in))-vZ(i);
-                            patch(v(c{i},1),v(c{i},2),vColors(i)); % use color i.
+                            vColors(ci) = mean(vC(in))-vZ(ci);
+                            patch(v(c{ci},1),v(c{ci},2),vColors(ci)); % use color i.
                         end
                     end
                 end
@@ -2759,7 +2759,7 @@ function runWanderlust
     data = sessionData(gate_context, selected_channels);
     
     params = retr('wanderlustParams');
-    if (isempty(params))
+    if (isempty(params) || ~isfield(params, 'l'))
         params = [];
         params.l = 30;
         params.k = 5;
@@ -2771,7 +2771,7 @@ function runWanderlust
     end
     
     params = wanderlustGUI('gates', gate_names, 'params', params);
-    if (isempty(params))
+    if (isempty(params) || ~isfield(params, 'l'))
         return;
     end
     put('wanderlustParams', params);
@@ -3707,10 +3707,15 @@ function cmiSubsample_Callback(isSubsampleEach)
         end
         
         gates = retr('gates');
+        channel_names = retr('channelNames');
         
         for i=selected_gates
-            rand_sample = randsample(gates{i, 2}, sample_size);
-            createNewGate(rand_sample, gates{i, 3}, {sprintf('%s%s', prefix{1}, gates{i, 1})});
+            rand_sample = randsample(intersect(gates{i, 2}, gateContext), sample_size);
+            gate_channel_names = gates{i, 3};
+            if numel(channel_names) > numel(gate_channel_names)
+                gate_channel_names = channel_names;
+            end
+            createNewGate(rand_sample, gate_channel_names, {sprintf('%s%s', prefix{1}, gates{i, 1})});
             gates = retr('gates');
 %             set(handles.lstGates, 'String', gates(:, 1));
 %             set(handles.lstIntGates, 'String', gates(:, 1));
@@ -4494,6 +4499,26 @@ function create_cluster_means()
         size(gates, 1)+1);
 
 end
+
+function create_indicator_channels_from_gates
+
+    handles = gethand; % GUI handles to retrieve info from gui as below
+
+    session_data = retr('sessionData'); % all data
+    gates       = retr('gates'); % all gates (names\indices) in cell array
+
+    selected_gates    = get(handles.lstGates, 'Value'); % currently selected 
+    selected_gate_names = remove_repeating_strings(gates(selected_gates, 1));
+
+    % generate descrete indicator channels for seelcted gates
+    new_names = {};
+    new_channels = zeros(size(session_data, 1), numel(selected_gates));
+    for i=1:numel(selected_gates)
+        new_names{end+1} = sprintf('%s - indicator', selected_gate_names{i});     
+        new_channels(gates{selected_gates(i), 2}, i) =  1;
+    end
+    addChannels(new_names, new_channels, 1:size(session_data, 1));  
+end
 % ------------
 % add your own code here. please refer to examples below.
 % ------------
@@ -4509,7 +4534,10 @@ function openEndedAction
     gate_context = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
     
-        create_cluster_means;
+    create_indicator_channels_from_gates
+    return;
+    
+    create_cluster_means;
     return;
     % create a knn graph and export cluster means to graphml
     [s,v] = listdlg('PromptString','Select a cluster channel:',...
