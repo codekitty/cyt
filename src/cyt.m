@@ -713,6 +713,7 @@ function hidePlotControls
     set(handles.pnlMetaClusterControls, 'Visible', 'off');
     set(handles.pnlSingleMetaControls, 'Visible', 'off');
     set(handles.pnlMetaTsneColor, 'visible', 'off');
+    set(handles.pnlANOVA, 'visible','off');
     
 end
 
@@ -1109,12 +1110,14 @@ function plot_sample_clusters(cluster_channel)
                 heat_min = -heat_max;
             end
         elseif color == 3,
+            color_map = linspecer;
+        elseif color == 4,
             color_map = interpolate_colormap(othercolor('YlOrBr9'), 64);
         end
         
         %plot heat map
         %subplot(10,1,1:9), imagesc(hl_L2_dist, [heat_min,heat_max]);
-        subplot(10,1,1:9), imagesc(marker_means);
+        subplot(10,1,1:9), imagesc(marker_means, [heat_min, heat_max]);
         %set(title(strcat('Sample ', mat2str(p), ': L2 + higher/lower than median')));
         set(gca, 'Position', [0.18,0.27,0.8,0.66]);
         set(gca, 'ytick', 1:length(unique(session_data(gate_context, cluster_channel))));
@@ -1169,7 +1172,9 @@ function plot_sample_clusters(cluster_channel)
             elseif heat_min < 0,
                 heat_min = -heat_max;
             end
-        elseif color == 3,
+        elseif color == 3,  %spectral colormap
+            color_map = linspecer;
+        elseif color == 4,  %tellow colormap
             color_map = interpolate_colormap(othercolor('YlOrBr9'), 64);
         end
         
@@ -1236,7 +1241,11 @@ function plot_sample_clusters(cluster_channel)
     elseif strcmp(plot_type,'Pie chart'),
         
         %find percentage of cells belonging to each cluster
-        cells_pr_cluster = countmember(unique(session_data(gate_context, cluster_channel)),session_data(gate_context,cluster_channel))/length(gate_context);
+        if length(unique(session_data(gate_context, cluster_channel))) == length(gate_context) && ~all(strcmp(channel_names, 'cell_percentage') == 0)
+            cells_pr_cluster = session_data(gate_context, strcmp(channel_names, 'cell_percentage'));
+        else
+            cells_pr_cluster = countmember(unique(session_data(gate_context, cluster_channel)),session_data(gate_context,cluster_channel))/length(gate_context);
+        end
         
         labels = strread(num2str(unique(session_data(gate_context, cluster_channel))'),'%s');
         pie(cells_pr_cluster, zeros(1,length(cells_pr_cluster)), labels);
@@ -1245,31 +1254,34 @@ function plot_sample_clusters(cluster_channel)
     %if plot type is tSNE map
     elseif strcmp(plot_type,'tSNE map')
         
-        if length(gate_context) > 10000,
-            inds = randsample(gate_context,10000);    %subsample if gate context is larger than 10,000
-        else
-            inds = gate_context;
-        end
+        inds = gate_context;
         
-        clusters = session_data(inds, cluster_channel);
-        
-        perplexity = [];
-        if(size(clusters,1) < 100)  %100 is arbitrary
+        if length(gate_context) < 100  % if dataset too small (100 is arbitrary) set perplexity to 2
             perplexity = 2;
+            tsne_out = fast_tsne(session_data(inds,selected_channels),[], perplexity); %running tSNE
+        else
+            if length(gate_context) > 10000,    %if dataset too large then subsample
+                inds = randsample(gate_context,10000);    %subsample if gate context is larger than 10,000
+            end
+            tsne_out = fast_tsne(session_data(inds,selected_channels)); %running tSNE
+
         end
-        tsne_out = fast_tsne(session_data(inds,selected_channels),[], perplexity); %running tSNE
-        
+
+        clusters = session_data(inds, cluster_channel);
+
         %plotting scatterplot
         colors = distinguishable_colors(length(unique(clusters)));
         colormap(colors);
         clim = [min(clusters),max(clusters)];
         myplotclr(tsne_out(:,1), tsne_out(:,2), clusters, clusters, 'o', colors, clim,0);
+        
+        %myplotclr(x,y,z,v,marker, map, clim, draw_grid)
         colorbar;
         caxis(clim);    %changing labels on colorbar
     
     %if plot type is single cluster
     elseif strcmp(plot_type, 'Single cluster')
-        unique_clusters = unique(session_data(:,cluster_channel));
+        unique_clusters = unique(session_data(gate_context,cluster_channel));
         
         if ismember(0,unique_clusters),
             fprintf('Cluster number 0 not allowed and will not be shown as an option\n')
@@ -1290,13 +1302,13 @@ function plot_sample_clusters(cluster_channel)
         end
         
         current_cluster = unique_clusters(get(handles.lstSingleCluster, 'Value'));
-        plot_single_cluster(current_cluster);
+        plot_single_cluster(current_cluster, cluster_channel, unique_clusters);
         
     end
     
 end
 
-function plot_single_cluster(current_cluster)
+function plot_single_cluster(current_cluster, cluster_channel, unique_clusters)
 
     handles = gethand; 
 
@@ -1319,23 +1331,7 @@ function plot_single_cluster(current_cluster)
     selected_gates    = get(handles.lstGates, 'Value');
     gate_names        = gates(selected_gates, 1);
     
-    %find cluster channel
-    cluster_channel      = get(handles.lstClusterChannels, 'Value');
-    if isempty(cluster_channel) || ~isDiscrete(cluster_channel) || length(unique(session_data(gate_context, cluster_channel))) > 500, %if channels is empty or channel is not discrete or the number of clusters is too large
-%         [s,v] = listdlg('PromptString','Select a cluster channel (must be discrete):',...
-%                 'SelectionMode','single',...
-%                 'InitialValue', initTimeSelection,...
-%                 'ListString',channel_names);
-        if ~v
-            return;
-        elseif ~isDiscrete(cluster_channel)
-            return;
-        elseif length(unique(cluster_channel)) > 500,
-            return;
-        end
-        cluster_channel = s;
-    end
-    
+        
     %finding single cluster plot type (1:marker density, 2:heat map, 3:graph)
     plot_type      = get(handles.popSingleClusterPlotType, 'Value');
    
@@ -1404,14 +1400,7 @@ function plot_single_cluster(current_cluster)
     
     elseif plot_type == 2,  %Heat map
         
-        color = get(handles.popSampleHeatColor, 'Value');
-        
-        if color == 1,
-            color_map = interpolate_colormap(redbluecmap, 64);
-        elseif color == 2,
-            color_map = color_map_creator('rg');
-        end
-        
+       
         %calculating input to plots
         %hl_L2_dist = L2_dist_heatmap_data(session_data(gate_context, selected_channels), session_data(gate_context, cluster_channel));
         SPR_distances = SPR_dist_heatmap(session_data(gate_context, selected_channels), session_data(gate_context, cluster_channel), 3);
@@ -1433,8 +1422,8 @@ function plot_single_cluster(current_cluster)
         
         
         %plotting
-        subplot(40,1,1:4), imagesc(SPR_distances(current_cluster,:), [heat_min,heat_max]);
-        colormap(color_map);
+        subplot(40,1,1:4), imagesc(SPR_distances(unique_clusters == current_cluster,:), [heat_min,heat_max]);
+        colormap(interpolate_colormap(redbluecmap, 64));
         set(gca, 'Ytick', []);
         set(gca, 'Xtick', []);
         %colorbar;
@@ -1498,9 +1487,11 @@ function createMeta
         params = [];
         params.neighbors = 2;
         params.metric = 'euclidean';
-        params.selected_gates = gate_names;
+        params.all_gates = gate_names;
         params.all_channels = channel_names;
+        params.selected_gates = selected_gates;
         params.cluster_channel = 1;
+        params.norm = 1;
         %params.all_channels = numel(channel_names');
     end
     
@@ -1519,7 +1510,22 @@ function createMeta
             inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
         end
         
-        [~, ~, meta_cluster_channel] = LOUVAIN_meta_clusters(sessionData(gate_context,selected_channels), sessionData(gate_context,params.cluster_channel), inds, params.neighbors, params.metric);
+        %normalize by std     
+        if params.norm
+            %data = sessionData(gate_context,selected_channels) ./ repmat(std(sessionData(gate_context, selected_channels)), size(sessionData(gate_context,selected_channels),1),1);
+            
+            norm_vals = [];
+            for i=1:length(inds)
+                norm_vals = vertcat(norm_vals, repmat(prctile(abs(sessionData( gates{selected_gates(i),2}, selected_channels)), 99), length(inds{i}),1));
+            end
+            
+            data = sessionData(gate_context,selected_channels) ./ norm_vals;
+            
+        else
+            data = sessionData(gate_context, selected_channels);
+        end
+        
+        [~, ~, meta_cluster_channel] = LOUVAIN_meta_clusters(data, sessionData(gate_context,params.cluster_channel), inds, params.neighbors, params.metric);
         addChannels({'meta_clusters'}, meta_cluster_channel, gate_context);
 
     catch e
@@ -1610,6 +1616,10 @@ function plot_meta_clusters(cluster_channel)
     %finding cluster centroids and mapping between clusters and meta clusters
     meta_cluster_channel = session_data(gate_context, meta_channel);
     [centroids, cluster_mapping] = get_centroids(session_data(gate_context, selected_channels), inds, session_data(gate_context, cluster_channel), meta_cluster_channel); 
+
+    if logical(size(centroids,1) == size(session_data(gate_context, selected_channels),1) && ~all(strcmp(channel_names, 'cell_percentage') == 0))
+        cluster_mapping(:, 5) = session_data(gate_context, strcmp(channel_names, 'cell_percentage'));
+    end
     
     %finding plot type
     plot_types = get(handles.popMetaPlotOptions, 'String');
@@ -1622,12 +1632,12 @@ function plot_meta_clusters(cluster_channel)
         for i=1:length(selected_gates),  %looping through samples
             for j=1:max(cluster_mapping(:,1)),    %looping through meta clusters
                                 
-                cells_in_meta(j,i) = sum(meta_cluster_channel(inds{i}) == j)/size(inds{i},1); %percentage of cells in sample belonging to meta cluster
+                cells_in_meta(j,i) = sum(cluster_mapping(cluster_mapping(:,3) == i & cluster_mapping(:,1) == j,5)); %percentage of cells in sample belonging to meta cluster
             end
         end
 
         %plotting stacked bar graph
-        subplot(20, 1, 1:15), bar(cells_in_meta', 0.9, 'stack');
+        subplot(20, 1, 1:18), bar(cells_in_meta', 0.9, 'stack');
         ylim([0,1]);
         legend(strread(num2str(1:size(unique(meta_cluster_channel),1)),'%s'),'location','eastoutside');
         title('Percentage of cells beloning to each meta cluster');
@@ -1637,7 +1647,33 @@ function plot_meta_clusters(cluster_channel)
 
         colormap(distinguishable_colors(size(unique(meta_cluster_channel),1)));
         
+    elseif strcmp(plot_type, 'Pie chart'),
+        
+        if size(cluster_mapping,1) == length(gate_context) && ~all(strcmp(channel_names, 'cell_percentage') == 0),
+            cells_pr_cluster = arrayfun(@(x) sum(cluster_mapping(cluster_mapping(:,1) == x, 5))/5, unique(session_data(gate_context, meta_channel)));
+        else
+            inds = {};
+    
+            for i=1:length(selected_gates),
+                inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
+            end
+            
+            cells_pr_cluster = zeros(length(inds), length(unique(session_data(gate_context, meta_channel))));
+            
+            for i=1:length(inds),   %looping through each sample
+                data = session_data(gate_context, :);
+                cells_pr_cluster(i,:) = countmember(unique(data(inds{1}, meta_channel)),data(inds{i},meta_channel)) / length(inds{i});
+            end
+            
+            cells_pr_cluster = sum(cells_pr_cluster, 1);
+        end
+        
+        labels = strread(num2str(unique(session_data(gate_context, meta_channel))'),'%s');
+        pie(cells_pr_cluster, zeros(1,length(cells_pr_cluster)), labels);
+        colormap(distinguishable_colors(length(unique(session_data(gate_context,meta_channel)))));
+        
     elseif strcmp(plot_type,'tSNE map'),
+        
         
         if ~isCtrlPressed
             set(handles.pnlMetaTsneColor, 'Visible', 'on');
@@ -1654,26 +1690,22 @@ function plot_meta_clusters(cluster_channel)
         end
         
         centroids(isnan(centroids(:,1)),:) = [];  %removing rows with NaNs in centroids
-        
         dot_size = 500/max(cluster_mapping(:,5)) * cluster_mapping(:,5)+5;  %rescaling size so they make sense size wise
         
-        %finding previous tSNE or calculating tSNE
-        tSNE_out = retr('tsneParams');
-        if (isempty(tSNE_out)),
-            tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
-            %tSNE_out = tsne(centroids, [], 2, size(centroids,2), 5);        
-        end
-        put('tsneParams', tSNE_out);
+        %calculating tSNE
+        tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
         
         %finding color channel
         color_chan = get(handles.lstTsneColorBy,'Value');        
         
         %testing if color_chan is discrete (= maybe cluster channel) or continous (maybe marker channel)
         %if isDiscrete(color_chan) && length(unique(session_data(gate_context, color_chan))) < 500,
-        if color_chan == meta_channel,
-            tsne_col = cluster_mapping(:,1);
-            scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size); %plotting
 
+        if color_chan == meta_channel && all(unique(session_data(gate_context, color_chan)) == round(unique(session_data(gate_context, color_chan))) == 1)
+            tsne_col = cluster_mapping(:,1);
+            %tsne_col = session_data(gate_context, color_chan);
+            scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size); %plotting         
+            
         else
             
             %finding marker means for marker selected
@@ -1685,63 +1717,289 @@ function plot_meta_clusters(cluster_channel)
             
             tsne_col = zeros(size(centroids,1),1);
             for i=1:size(centroids,1),
-                sub_data = session_data(inds{cluster_mapping(i,3)},:);
-                tsne_col(i) = mean(sub_data(sub_data(:,cluster_channel) == cluster_mapping(i,4), color_chan));
+                sub_data = session_data(gate_context,:);
+                sub_data = sub_data(inds{cluster_mapping(i,3)},:);
+                tsne_col(i) = mean(sub_data(sub_data(:,cluster_channel) == cluster_mapping(i,4), color_chan),1);
                 %tsne_col(cluster_mapping(:,1) == i) = median(session_data(session_data(gate_context,cluster_channel) == i,color_chan));
             end
             
-            %making 0.95 quantile most red color and 0.05 quantile most blue color to compensate for outliers
-            tsne_col(tsne_col < quantile(tsne_col, 0.05)) = quantile(tsne_col,0.05);
-            tsne_col(tsne_col > quantile(tsne_col, 0.95)) = quantile(tsne_col, 0.95);
+            if all(unique(session_data(gate_context, color_chan)) == round(unique(session_data(gate_context, color_chan))) == 1)    %if color channel is discrete
+                scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size); %plotting
+            else
+                %making 0.95 quantile most red color and 0.05 quantile most blue color to compensate for outliers
+                tsne_col(tsne_col < quantile(tsne_col, 0.05)) = quantile(tsne_col,0.05);
+                tsne_col(tsne_col > quantile(tsne_col, 0.95)) = quantile(tsne_col, 0.95);
             
-            scatter(tSNE_out(:,1),tSNE_out(:,2), dot_size, tsne_col, 'fill');
+                scatter(tSNE_out(:,1),tSNE_out(:,2), dot_size, tsne_col, 'fill');
+            end
             colorbar;
 
         end
         
         xlabel('tSNE1');
         ylabel('tSNE2');
+        title(channel_names{color_chan})
+        
         
         %tSNE_out = fast_tsne(centroids, 50, 10);
         %tSNE_plot(tSNE_out, 'metaclusters',meta_cluster_list, out_dir, dot_size);
         %scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), color_variable, dot_size)
 
-              
-        
-    elseif strcmp(plot_type,'Single meta cluster'),
-        
-        % show controls
-        if ~isCtrlPressed
-            set(handles.pnlSingleMetaControls, 'Visible', 'on');
-        end
-        
+    elseif (strcmp(plot_type, 'Heat map') || strcmp(plot_type, 'ANOVA Heat map')),
         unique_meta = unique(meta_cluster_channel);
-        set(handles.lstSingleMetaCluster, 'String', unique_meta);
         
-        %find selected meta cluster
-        current_meta = unique_meta(get(handles.lstSingleMetaCluster, 'Value'));
-
-        %generating heatmap data for all clusters for all time points
-        heatmap_data = [];
-        ylabs = [];
+        heatmap_data = zeros(length(unique_meta), length(selected_channels));
+        data = session_data(gate_context, :);
         
-        for i=1:length(selected_gates),   %looping through gates
-            heat = SPR_dist_heatmap(session_data(gate_context(inds{i}), selected_channels), session_data(gate_context(inds{i}), cluster_channel), 3);
-            heatmap_data = vertcat(heatmap_data,heat(cluster_mapping(cluster_mapping(:,1) == current_meta & cluster_mapping(:,3) == i,4),:));
-            ylabs = vertcat(ylabs,strcat(gate_names(i),'(',strread(num2str(cluster_mapping(cluster_mapping(:,1) == current_meta & cluster_mapping(:,3) == i,4)'), '%s'),')'));
+        for i=1:length(unique_meta)
+            heatmap_data(i,:) = mean(data(meta_cluster_channel == unique_meta(i), selected_channels),1);
         end
         
         %finding min and max values for heat map
         heat_min = min(min(heatmap_data));
         heat_max = max(max(heatmap_data));
         
-        %scaling colors so that zero will always be black
-        if abs(heat_min) > heat_max,
-            heat_max = abs(heat_min);
-        elseif heat_min < 0,
-            heat_min = -heat_max;
+        idx = 1:size(heatmap_data,2);
+        start = 1;
+        stop = size(heatmap_data,2);
+        x_labels = channel_names(selected_channels);
+        included_meta = unique_meta;
+        
+        if max(get(handles.lstANOVA_clusters, 'Value')) > max(included_meta)
+            set(handles.lstANOVA_clusters, 'Value', 1);
         end
         
+        if (strcmp(plot_type, 'ANOVA Heat map'))
+
+            set(handles.lstANOVA_clusters, 'String', unique_meta);
+            
+            if ~isCtrlPressed
+                set(handles.pnlANOVA, 'Visible', 'on');
+            end
+            
+            start = str2double(get(handles.edANOAVA_min,'String'));
+            
+            if str2double(get(handles.edANOVA_max, 'String')) < stop,
+                stop = str2double(get(handles.edANOVA_max, 'String'));
+            else
+                set(handles.edANOVA_max, 'String', num2str(stop));
+            end
+
+            if start >= stop,
+                fprintf('Start value %g is larger than stop value %g\n', start, stop);
+                return;
+            end
+            
+            included_meta = get(handles.lstANOVA_clusters, 'Value');
+           
+            %doing ANOVA on each marker an finding ones that best distinguish between meta clusters
+            p_anova = zeros(length(selected_channels),1);
+            data = session_data(gate_context, :);
+
+            for i=1:length(selected_channels)
+                p_anova(i) = anova1(data(ismember(data(:,meta_channel), included_meta),selected_channels(i)), data(ismember(data(:,meta_channel), included_meta),meta_channel), 'off');
+            end
+
+            [~,idx]=sort(p_anova);
+            
+            x_labels = strcat(channel_names(selected_channels(idx(start:stop))), '(',strread(num2str(p_anova(idx(start:stop))'),'%s')',')');
+           
+            %normalize columns
+            if get(handles.chbNormColumns, 'Value')
+                %finding min and max values for heat map
+                heat_min = min(min(heatmap_data));
+                heat_max = max(max(heatmap_data));
+                heatmap_data = heatmap_data(included_meta,idx(start:stop));
+
+            else
+                heatmap_data = heatmap_data(included_meta,idx(start:stop));
+
+                %finding min and max values for heat map
+                heat_min = min(min(heatmap_data));
+                heat_max = max(max(heatmap_data));
+            end
+
+        end
+        
+        
+        if heat_min > 0
+            color_map = linspecer;
+            heat_min = 0;
+        else
+            %scaling colors so that zero will always be white
+            if abs(heat_min) > heat_max,
+                heat_max = abs(heat_min);
+            else
+                heat_min = -heat_max;
+            end
+
+            color_map = interpolate_colormap(redbluecmap, 64);
+        end
+        
+        %plot heat map
+        subplot(10,1,1:9), imagesc(heatmap_data, [heat_min,heat_max]);
+        %set(title(strcat('Sample ', mat2str(p), ': L2 + higher/lower than median')));
+        set(gca, 'Position', [0.18,0.27,0.8,0.66]);
+        set(gca, 'ytick', 1:length(included_meta));
+        set(gca, 'Yticklabel', included_meta);
+        set(gca, 'xtick', []);
+        colormap(color_map);
+        colorbar;
+        xticklabel_rotate([1:length(x_labels)],90,x_labels);
+        
+    elseif strcmp(plot_type, 'Detailed Heat map'),
+        clusterHeatmap(centroids, cluster_mapping(:,1),  channel_names(selected_channels), 1)
+        colorbar;
+        
+    elseif strcmp(plot_type,'Single meta cluster'),
+        
+        unique_meta = unique(meta_cluster_channel);
+
+        if get(handles.lstSingleMetaCluster, 'Value') > length(unique_meta)
+            set(handles.lstSingleMetaCluster, 'Value', 1);
+        end
+
+        set(handles.lstSingleMetaCluster, 'String', unique_meta);
+        
+        % show controls
+        if ~isCtrlPressed
+            set(handles.pnlSingleMetaControls, 'Visible', 'on');
+        end
+        
+        current_meta = unique_meta(get(handles.lstSingleMetaCluster, 'Value'));
+
+        %generating heatmap data for all clusters for all time points
+        heatmap_data = [];
+        ylabs = [];
+        norm_99 = zeros(length(selected_gates), length(selected_channels));
+        norm_sign = [];
+        
+        %if data already contains distances (condition gates) then do nothing, else compute distances
+        if logical(size(centroids,1) == size(session_data(gate_context, selected_channels),1) && ~all(strcmp(channel_names, 'cell_percentage') == 0))
+            heatmap_data = session_data(meta_cluster_channel == current_meta, selected_channels);
+            
+            for i=1:length(selected_gates),   %looping through gates
+                ylabs = vertcat(ylabs,strcat(gate_names(i),'(',strread(num2str(cluster_mapping(cluster_mapping(:,1) == current_meta & cluster_mapping(:,3) == i,4)'), '%s'),')'));
+                
+                norm_99(i,:) = prctile(abs(session_data( gates{selected_gates(i),2}, selected_channels)), 99);
+            end
+        else
+        
+            for i=1:length(selected_gates),   %looping through gates
+                unique_clusters = unique(session_data(gate_context(inds{i}), cluster_channel));
+                heat = SPR_dist_heatmap(session_data(gate_context(inds{i}), selected_channels), session_data(gate_context(inds{i}), cluster_channel), 3);
+                
+                norm_99(i,:) = prctile(heat, 99);
+                
+                [~, pl] = intersect(unique_clusters, cluster_mapping(cluster_mapping(:,1) == current_meta & cluster_mapping(:,3) == i,4));
+                heatmap_data = vertcat(heatmap_data,heat(pl,:));
+                ylabs = vertcat(ylabs,strcat(gate_names(i),'(',strread(num2str(cluster_mapping(cluster_mapping(:,1) == current_meta & cluster_mapping(:,3) == i,4)'), '%s'),')'));
+            end
+        end
+                
+%         %if user wants data for heatmap normalized by standard deviation
+%         if get(handles.chbHeatNorm, 'Value')
+%             heatmap_data = heatmap_data ./ repmat(std(session_data(gate_context, selected_channels)), size(heatmap_data,1),1);
+%         end
+     
+        max_col = get(handles.edScale, 'String');
+        
+        idx = 1:size(heatmap_data,2);
+        start = str2double(get(handles.edTtest_min, 'String'));
+        
+        if str2double(get(handles.edTtest_max, 'String')) < size(heatmap_data,2),
+            stop = str2double(get(handles.edTtest_max, 'String'));
+        else
+            stop = size(heatmap_data,2);
+            set(handles.edTtest_max, 'String', num2str(stop));
+        end
+        
+        if start >= stop,   %making sure that start is smaller than stop
+            fprintf('Start value %g is larger than stop value %g\n', start, stop);
+            return;
+        end
+        
+        x_labels = channel_names(selected_channels);
+        
+        if get(handles.chbTtest, 'Value'),
+            
+            %doing ANOVA on each marker an finding ones that best distinguish between meta clusters
+            p_ttest = zeros(length(selected_channels),1);
+            data = session_data(gate_context,:);
+
+            for i=1:length(selected_channels)
+                %figure
+                %lillietest(data(data(:,meta_channel) == current_meta,selected_channels(3))')
+                %ksdensity(data(data(:,meta_channel) == current_meta,selected_channels(3))')
+                %figure
+                %lillietest(data(data(:,meta_channel) ~= current_meta,selected_channels(i)))
+                %ksdensity(data(data(:,meta_channel) ~= current_meta,selected_channels(i)))
+                %p_ttest(i) = ranksum(data(data(:,meta_channel) == current_meta,selected_channels(i)), data(data(:,meta_channel) ~= current_meta,selected_channels(i)));
+                [~,p_ttest(i)] = ttest2(data(data(:,meta_channel) == current_meta,selected_channels(i)), data(data(:,meta_channel) ~= current_meta,selected_channels(i)));
+            end
+
+            [~,idx]=sort(p_ttest);
+            
+            x_labels = strcat(channel_names(selected_channels(idx(start:stop))), '(',strread(num2str(p_ttest(idx(start:stop))'),'%s')',')');
+           
+        end
+        
+        %finding min and max values for heat map
+        if get(handles.chbHeatNorm, 'Value')    %if user wants data normalized by column
+            
+%             %normalizing by sample
+            heatmap_data = heatmap_data./norm_99(cluster_mapping(cluster_mapping(:,1) == current_meta, 3),:);
+
+            %heatmap_data = session_data(meta_cluster_channel == current_meta, selected_channels);
+
+        end
+        
+        heat_min = min(min(heatmap_data(:,idx(start:stop))));
+        heat_max = max(max(heatmap_data(:,idx(start:stop))));
+        
+        %heat_min = min(min(heatmap_data));
+        %heat_max = max(max(heatmap_data));
+        
+        %heat_min = prctile(reshape(heatmap_data(:,idx(start:stop)), 1, size(heatmap_data(:,idx(start:stop)),1)*size(heatmap_data(:,idx(start:stop)),2)),1);
+        %heat_max = prctile(reshape(heatmap_data(:,idx(start:stop)), 1, size(heatmap_data(:,idx(start:stop)),1)*size(heatmap_data(:,idx(start:stop)),2)),99);
+        %heat_min = prctile(reshape(heatmap_data, 1, size(heatmap_data,1)*size(heatmap_data,2)),1);
+        %heat_max = prctile(reshape(heatmap_data, 1, size(heatmap_data,1)*size(heatmap_data,2)),99);
+        
+        %heat_min = prctile(reshape(session_data(gate_context,selected_channels)./norm_99(cluster_mapping(:,3),:), 1, length(gate_context)*length(selected_channels)), 1);
+        %heat_max = prctile(reshape(session_data(gate_context,selected_channels)./norm_99(cluster_mapping(:,3),:), 1,length(gate_context)*length(selected_channels)), 99);
+            
+        if isempty(max_col) || strcmp(max_col, 'max')   %if nothing is defined or user has defined 'max' then heatmap scaling is scaling of data for selected cluster
+            
+            if heat_min > 0 %if there is only positive values in heat map
+                color_map = linspecer;
+                heat_min = 0;
+            else    %if there is both positive and negative values in heat map
+                %scaling colors so that zero will always be white
+                if abs(heat_min) > heat_max,
+                    heat_max = abs(heat_min);
+                else
+                    heat_min = -heat_max;
+                end
+
+                color_map = interpolate_colormap(redbluecmap, 64);
+            end
+            
+        elseif str2num(max_col) > 0
+            
+            heat_max = str2num(max_col);
+            
+            if heat_min > 0
+                 heat_min = 0;
+                 color_map = linspecer;
+            else
+                heat_min = -str2num(max_col);
+                color_map = interpolate_colormap(redbluecmap, 64);
+
+            end
+        else
+            fprintf('Heat map max color must be positive\n')
+        end
+            
         %defining color map
 %         color = get(handles.popSampleHeatColor, 'Value');
 %         
@@ -1750,10 +2008,9 @@ function plot_meta_clusters(cluster_channel)
 %         elseif color == 2,
 %             color_map = color_map_creator('rg');
 %         end
-        color_map = interpolate_colormap(redbluecmap, 64);
         
         %plot heat map
-        subplot(10,1,1:9), imagesc(heatmap_data, [heat_min,heat_max]);
+        subplot(10,1,1:9), imagesc(heatmap_data(:,idx(start:stop)), [heat_min,heat_max]);
         %set(title(strcat('Sample ', mat2str(p), ': L2 + higher/lower than median')));
         set(gca, 'Position', [0.18,0.27,0.8,0.66]);
         set(gca, 'ytick', 1:length(ylabs));
@@ -1761,10 +2018,10 @@ function plot_meta_clusters(cluster_channel)
         set(gca, 'xtick', []);
         colormap(color_map);
         colorbar;
-        xticklabel_rotate([1:length(selected_channels)],90,channel_names(selected_channels));
+        xticklabel_rotate([1:length(x_labels)],90,x_labels);
         
-        
-        %fprintf('Function not implemented yet\n');
+        title(strcat('Meta cluster: ', mat2str(current_meta)));
+
     end
     
 end
