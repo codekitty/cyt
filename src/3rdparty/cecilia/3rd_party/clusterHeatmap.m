@@ -47,10 +47,15 @@ end
 [~,ix] = sort(labels);
 mtx = mtx(ix,:)';
 lines = cumsum( clusterSize ) + .5;
+%imagesc(mtx, [-max(max(abs(mtx))),max(max(abs(mtx)))]);    %use this
+%option with red/blue heatmap
 imagesc(mtx);
+colormap(linspecer);
+%colormap(interpolate_colormap(redbluecmap,64));    %use this for red/blue
+%heatmap centered around zero
 for i = 1:length(lines)-1 % don't plot first or last line
     hold on;
-    plot( [lines(i) lines(i)], ylim(), 'k--', 'LineWidth', 2 );
+    plot( [lines(i) lines(i)], ylim(), 'k--', 'LineWidth', 2);
     hold off;
 end
 

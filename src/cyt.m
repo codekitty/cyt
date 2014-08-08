@@ -1662,7 +1662,7 @@ function plot_meta_clusters(cluster_channel)
             
             for i=1:length(inds),   %looping through each sample
                 data = session_data(gate_context, :);
-                cells_pr_cluster(i,:) = countmember(unique(data(inds{1}, meta_channel)),data(inds{i},meta_channel)) / length(inds{i});
+                cells_pr_cluster(i,:) = countmember(unique(data(:, meta_channel)),data(inds{i},meta_channel)) / length(inds{i});
             end
             
             cells_pr_cluster = sum(cells_pr_cluster, 1);
@@ -1773,6 +1773,10 @@ function plot_meta_clusters(cluster_channel)
 
             set(handles.lstANOVA_clusters, 'String', unique_meta);
             
+            if length(get(handles.lstANOVA_clusters, 'Value')) > length(unique_meta)
+                set(handles.lstANOVA_clusters, 'Value', 1);
+            end
+            
             if ~isCtrlPressed
                 set(handles.pnlANOVA, 'Visible', 'on');
             end
@@ -1797,7 +1801,7 @@ function plot_meta_clusters(cluster_channel)
             data = session_data(gate_context, :);
 
             for i=1:length(selected_channels)
-                p_anova(i) = anova1(data(ismember(data(:,meta_channel), included_meta),selected_channels(i)), data(ismember(data(:,meta_channel), included_meta),meta_channel), 'off');
+                p_anova(i) = anova1(data(ismember(data(:,meta_channel), unique_meta(included_meta)),selected_channels(i)), data(ismember(data(:,meta_channel), unique_meta(included_meta)),meta_channel), 'off');
             end
 
             [~,idx]=sort(p_anova);
@@ -1848,6 +1852,40 @@ function plot_meta_clusters(cluster_channel)
         xticklabel_rotate([1:length(x_labels)],90,x_labels);
         
     elseif strcmp(plot_type, 'Detailed Heat map'),
+        
+%         start = str2double(get(handles.edANOAVA_min,'String'));
+% 
+%         if str2double(get(handles.edANOVA_max, 'String')) < stop,
+%             stop = str2double(get(handles.edANOVA_max, 'String'));
+%         else
+%             set(handles.edANOVA_max, 'String', num2str(stop));
+%         end
+
+%         start = 1;
+%         stop = 10;
+% 
+%         if start >= stop,
+%             fprintf('Start value %g is larger than stop value %g\n', start, stop);
+%             return;
+%         end
+% 
+%         %included_meta = get(handles.lstANOVA_clusters, 'Value');
+%         included_meta = 1:4;
+% 
+%         %doing ANOVA on each marker an finding ones that best distinguish between meta clusters
+%         p_anova = zeros(length(selected_channels),1);
+%         data = session_data(gate_context, :);
+% 
+%         for i=1:length(selected_channels)
+%             p_anova(i) = anova1(data(ismember(data(:,meta_channel), included_meta),selected_channels(i)), data(ismember(data(:,meta_channel), included_meta),meta_channel), 'off');
+%         end
+% 
+%         [~,idx]=sort(p_anova);
+% 
+%         x_labels = strcat(channel_names(selected_channels(idx(start:stop))), '(',strread(num2str(p_anova(idx(start:stop))'),'%s')',')');
+%         
+%         clusterHeatmap(centroids(:,idx(start:stop)), cluster_mapping(:,1),  x_labels, 1)
+
         clusterHeatmap(centroids, cluster_mapping(:,1),  channel_names(selected_channels), 1)
         colorbar;
         
@@ -1871,26 +1909,22 @@ function plot_meta_clusters(cluster_channel)
         %generating heatmap data for all clusters for all time points
         heatmap_data = [];
         ylabs = [];
-        norm_99 = zeros(length(selected_gates), length(selected_channels));
-        norm_sign = [];
         
         %if data already contains distances (condition gates) then do nothing, else compute distances
         if logical(size(centroids,1) == size(session_data(gate_context, selected_channels),1) && ~all(strcmp(channel_names, 'cell_percentage') == 0))
-            heatmap_data = session_data(meta_cluster_channel == current_meta, selected_channels);
+            data = session_data(gate_context,:);
+            heatmap_data = data(meta_cluster_channel == current_meta, selected_channels);
             
             for i=1:length(selected_gates),   %looping through gates
                 ylabs = vertcat(ylabs,strcat(gate_names(i),'(',strread(num2str(cluster_mapping(cluster_mapping(:,1) == current_meta & cluster_mapping(:,3) == i,4)'), '%s'),')'));
                 
-                norm_99(i,:) = prctile(abs(session_data( gates{selected_gates(i),2}, selected_channels)), 99);
             end
         else
         
             for i=1:length(selected_gates),   %looping through gates
                 unique_clusters = unique(session_data(gate_context(inds{i}), cluster_channel));
                 heat = SPR_dist_heatmap(session_data(gate_context(inds{i}), selected_channels), session_data(gate_context(inds{i}), cluster_channel), 3);
-                
-                norm_99(i,:) = prctile(heat, 99);
-                
+                                
                 [~, pl] = intersect(unique_clusters, cluster_mapping(cluster_mapping(:,1) == current_meta & cluster_mapping(:,3) == i,4));
                 heatmap_data = vertcat(heatmap_data,heat(pl,:));
                 ylabs = vertcat(ylabs,strcat(gate_names(i),'(',strread(num2str(cluster_mapping(cluster_mapping(:,1) == current_meta & cluster_mapping(:,3) == i,4)'), '%s'),')'));
@@ -1944,21 +1978,30 @@ function plot_meta_clusters(cluster_channel)
            
         end
         
-        %finding min and max values for heat map
-        if get(handles.chbHeatNorm, 'Value')    %if user wants data normalized by column
-            
-%             %normalizing by sample
-            heatmap_data = heatmap_data./norm_99(cluster_mapping(cluster_mapping(:,1) == current_meta, 3),:);
-
-            %heatmap_data = session_data(meta_cluster_channel == current_meta, selected_channels);
-
-        end
-        
         heat_min = min(min(heatmap_data(:,idx(start:stop))));
         heat_max = max(max(heatmap_data(:,idx(start:stop))));
         
-        %heat_min = min(min(heatmap_data));
-        %heat_max = max(max(heatmap_data));
+        %finding min and max values for heat map
+        if get(handles.chbHeatNorm, 'Value')    %if user wants data normalized by column
+            
+            %heatmap_data = heatmap_data./repmat(std(heatmap_data), size(heatmap_data,1), 1);
+            %heatmap_data = heatmap_data./repmat(prctile(abs(heatmap_data),99), size(heatmap_data,1), 1);
+            
+            heatmap_data = heatmap_data ./ repmat(std(session_data(gate_context,selected_channels)), size(heatmap_data,1),1);
+            
+            heat_min = min(min(session_data(gate_context,selected_channels)./ repmat(std(session_data(gate_context,selected_channels)), length(gate_context),1)));
+            heat_max = max(max(session_data(gate_context,selected_channels)./ repmat(std(session_data(gate_context,selected_channels)), length(gate_context),1)));
+            
+            %heat_min = min(min(heatmap_data));
+            %heat_max = max(max(heatmap_data));
+
+
+        end
+        
+        %heat_min = min(min(heatmap_data(:,idx(start:stop))));
+        %heat_max = max(max(heatmap_data(:,idx(start:stop))));
+        
+
         
         %heat_min = prctile(reshape(heatmap_data(:,idx(start:stop)), 1, size(heatmap_data(:,idx(start:stop)),1)*size(heatmap_data(:,idx(start:stop)),2)),1);
         %heat_max = prctile(reshape(heatmap_data(:,idx(start:stop)), 1, size(heatmap_data(:,idx(start:stop)),1)*size(heatmap_data(:,idx(start:stop)),2)),99);
