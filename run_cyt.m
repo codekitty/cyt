@@ -3,7 +3,7 @@
 curr_path = [curr_path filesep];
 
 % get all subdirectories
-path_with_subdirectories = genpath(curr_path );
+path_with_subdirectories = genpath(curxr_path );
 addpath( path_with_subdirectories );
 savepath;
 cyt

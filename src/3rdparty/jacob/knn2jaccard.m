@@ -1,11 +1,11 @@
-function G = knn2jaccard( G )
+function G = knn2jaccard( IDX )
 % IN:
 %   IDX is a n x k matrix
 %   row i contains the indices of i's k nearest neighbors (in descending order of similarity)
 %   e.g. IDX = knnsearch(data,data,'k',k+1); IDX(:,1)=[];
 % OUT:
 %   G is the lower triangle (excluding diagonal) of the resulting adjacency matrix
-[i,j,s] = find(G)
+% [i,j,s] = find(G)
 
 [n,k] = size(IDX);
 I = nan(1, k*n );

@@ -198,23 +198,3 @@ end
 % counts.
 binned_data = accumarray(bins(all(bins>0,2),:),1/nrows,M(ones(1,ncols)));
 end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

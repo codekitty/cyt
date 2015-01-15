@@ -42,6 +42,7 @@ smoothness_factor = 0.5;
 svGolay = true;
 control_density = false;
 matPatchColors = [0.75 0.75 0.75; 0.6 0.6 0.6; 0 0 1];
+branch = zeros(1, numel(x));
 
 for i=1:length(varargin)-1
     if(strcmp(varargin{i},'num_locs'))
@@ -64,6 +65,8 @@ for i=1:length(varargin)-1
         svGolay = varargin{i+1};
     elseif(strcmp(varargin{i},'smooth'))
         smoothness_factor = varargin{i+1};
+    elseif(strcmp(varargin{i},'branch'))
+        branch = varargin{i+1};
     elseif(strcmp(varargin{i},'movie'))
         make_distribution_movie = true;
         movie_name = varargin{i+1};
@@ -72,9 +75,8 @@ end
 
 if (rank)
     x = tiedrank(x);
-end
+end    
 
-x_range = max(x)-min(x);
 weights = zeros(num_locs, length(x));
 Y_vals = zeros(num_locs, size(Y, 2));
 Y_errs = zeros(num_locs, size(Y, 2));
@@ -82,9 +84,36 @@ Yn = size(Y, 1);
 
 % compute a weight for each value (data point), at each plot location
 for i=1:num_locs
-	weights(i, :) = compute_weights(x, (i/num_locs)*x_range+min(x), avg_type, smoothness_factor);
+	weights(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), avg_type, smoothness_factor);
 end
 
+%clean branch
+if any(branch)
+    pre_cleaning = weights;
+
+    weights_by_branch = sum(weights(:, branch==0), 2);
+    weights_by_branch(:, end+1) = sum(weights(:, branch~=0), 2)
+    branching_loc = find(weights_by_branch(:, 1)<weights_by_branch(:, 2));
+    weights(branching_loc(1):num_locs, branch==0) = 0;
+    weights(1:branching_loc(1)-1, branch~=0) = 0;
+   
+end
+
+real_weights = weights;
+for bri=unique(branch)'
+    if any(branch)
+        weights = real_weights;
+        weights(:, branch~=bri) = 0;
+        visible_locs = find(sum(weights, 2));
+        if (bri ~= 0) % if on a branch
+            trans_length = ceil(num_locs/10);
+            for transi = 1:(trans_length-1)
+                weights(visible_locs(transi), branch~=bri) = (1-transi/trans_length)*pre_cleaning(visible_locs(transi), branch~=bri);
+            end
+        else
+            weights(visible_locs(end)+1, :) = pre_cleaning(visible_locs(end)+1, :);
+        end
+    end
 % Compute weighted averages at each location
 X = linspace(min(x), max(x), num_locs);
 Y_vals = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
@@ -121,8 +150,17 @@ end
 
 Y_vals_orig = Y_vals;
 if (normalize)
-    Y_vals = Y_vals-repmat(prctile(Y_vals, 1, 1), size(Y_vals,1),1);
-    Y_vals = Y_vals./repmat(prctile((Y_vals), 99, 1),size(Y_vals,1),1);
+    % we want to normalize while accounting for branches
+    y_vals_all = [];
+    for bri=unique(branch)'
+        weights = real_weights;
+        weights(:, branch~=bri) = 0;
+        % Compute weighted averages at each location
+        y_vals_all = [y_vals_all; weights*Y./repmat(sum(weights, 2), 1, size(Y, 2))];
+    end
+    Y_vals = Y_vals-repmat(prctile(y_vals_all, 1, 1), size(Y_vals,1),1);
+    y_vals_all = y_vals_all-repmat(prctile(y_vals_all, 1, 1), size(y_vals_all,1),1);
+    Y_vals = Y_vals./repmat(prctile((y_vals_all), 97, 1),size(Y_vals,1),1);
 end
 
 matColors = distinguishable_colors(size(Y, 2));
@@ -137,38 +175,24 @@ if (size(Y, 2)> 1)
     end
 end
 if (show_error)
-%         for li=1:num_locs
-%             sl_weights(li, :) = compute_weights(x, (li/num_locs)*x_range, 'sliding', smoothness_factor);
-%         end
-%         quantiles = NaN(num_locs,5);
-%         for bini=1:num_locs
-%             quantiles(bini, :) = quantile(Y(sl_weights(bini, :), 1),[0.25 0.375 0.5 0.625 0.75]);
-%         end
 
-    for i=1:num_locs
-        
+    for i=1:num_locs       
         %symmetrical for error bars
         Y_errs(i, :) = weights(i, :)*(((Y-repmat(Y_vals_orig(i, :),Yn,1)-repmat(prctile(Y_vals, 1, 1), size(Y,1),1))./...
             repmat(prctile((Y_vals_orig), 99, 1),size(Y,1),1))).^2/sum(weights(i, :));        
-%         if ~rank
-%             % TODO figure out a better way because threshhold should change
-%             % according to number of points
-%             Y_errs(i, :) = Y_errs(i, :)/sqrt(sum(weights(i, :) > .1)); 
-%         end
     end
     
     for yi=1:size(Y, 2)
         % plot light grey background first for variance
         fill([X, fliplr(X)], [(Y_vals(:, yi)-Y_errs(:, yi))', fliplr((Y_vals(:, yi)+Y_errs(:, yi))')],...
             matColors(yi,:),'linestyle','none','facealpha',.5);
-
-%     fill([X, fliplr(X)], [quantiles(:, 2)', fliplr((quantiles(:, 4))')],...
-%         matPatchColors(1,:),'linestyle','none','facealpha',.5);
-
-%     errorbar(repmat(X', 1, size(Y,2)), Y_vals, Y_errs);  
     end
 end
 
+if (any(branch))
+    hold on;
+end
+end
 if ~(rank || control_density)    
     try
     dens = sum(weights, 2)';

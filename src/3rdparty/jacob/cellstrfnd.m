@@ -10,10 +10,10 @@ ix = false(1,m);
 
  for i = 1:m
 %     %case insensitive version
-%     a = lower(cellarray{i});
-%     b = lower(string);
-%     if ~isempty(strfind(a,b);
-    if ~isempty(strfind(cellarray{i},string))
+    a = lower(cellarray{i});
+    b = lower(string);
+    if ~isempty(strfind(a,b))
+%     if ~isempty(strfind(cellarray{i},string))
         ix(i) = true;
     end
 end

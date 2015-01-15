@@ -58,10 +58,9 @@ for i=1:length(varargin)-1
         metrics = get(handles.pupMetric, 'String');
         metric = find(strcmpi(metrics, params.metric));
         set(handles.pupMetric, 'Value', metric);
-        set(handles.lstGates, 'String', params.all_gates);
+        set(handles.lstGates, 'String', params.selected_gates);
         %set(handles.lstClusterChannel, 'Value', params.all_channels);
         set(handles.lstClusterChannel, 'String', params.all_channels);
-        set(handles.lstGates, 'Value', params.selected_gates);
 
 %     elseif(strcmp(varargin{i}, 'gates'))
 %         set(handles.lstGates, 'String', varargin{i+1});
@@ -178,7 +177,6 @@ function W=findMetaClusters
     handles=guihandles(hgui);
 
     W.selected_gates = get(handles.lstGates, 'Value');
-    W.all_gates = get(handles.lstGates, 'String');
     W.cluster_channel = get(handles.lstClusterChannel, 'Value');
     W.neighbors = str2num(get(handles.txtNeighbors, 'String'));
 
@@ -186,8 +184,6 @@ function W=findMetaClusters
     strMetrics = get(handles.pupMetric, 'String');
     W.metric = strMetrics{nMetric};
     W.all_channels = get(handles.lstClusterChannel, 'String');
-    W.norm = get(handles.chbNormMeta, 'Value');
-    
             
     
 end

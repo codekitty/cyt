@@ -103,6 +103,9 @@ function ydata = tsne_p(P, labels, no_dims)
             txt_iter = sprintf('Iteration %g out of %g: : error is %g', iter, max_iter,cost);
             disp(txt_iter);
         	waitbar(iter/max_iter, hwaitbar, txt_iter);
+            if cost < 1.2
+                iter = max_iter;
+            end
         else
             waitbar(iter/max_iter, hwaitbar);
         end

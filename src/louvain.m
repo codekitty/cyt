@@ -207,6 +207,9 @@ function [cmty mod]=runLouvain
 
     % Call louvain's matlab implementation
 	[cmty mod] = spdists_louvain(sparse_adjacency_matrix);
+            numel(mod)
+        numel(cmty)
+
 end
 
 % --- Executes on button press in btnCancel.

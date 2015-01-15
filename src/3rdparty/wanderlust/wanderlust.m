@@ -22,7 +22,7 @@ else
     end
 
     tic
-	lnn = parfor_spdists_knngraph( data, l, 'distance', distance, 'chunk_size', 1000, 'SNN', true, 'verbose', true );
+	lnn = parfor_spdists_knngraph( data, l, 'distance', distance, 'chunk_size', 2000, 'SNN', true, 'verbose', true );
     
 %     if (snn)
 %         lnn = knn2jaccard(lnn);
@@ -61,7 +61,7 @@ for graph_iter = 1:num_graphs
 	% calculate weighed trajectory
     sdv = mean ( std ( dist) )*3;
 	dist_power = dist;
-     dist_power(:, :) = 1;
+%     dist_power(:, :) = 1;
 %     dist_power = ((2*pi*(sdv^2))^(-1)) * exp( -.5 * (dist_power / sdv).^2);
 	dist_power_norm = dist_power ./ repmat( sum( dist_power ), size( dist_power, 1 ), 1 );
      dist_power_norm = 1-dist_power_norm;
@@ -198,6 +198,10 @@ end
         for i=1:numel(n)
             n(i) = knnsearch(data, median(data(IDX(i, :), :)), 'distance', distance); 
         end
+        
+%         % shift random list to centroids
+%         [~, C] = kmeans(data, n - 1 - length(partial_order));
+%         n = knnsearch(data, C, 'distance', distance);     
     end
 
     partial_order = [s;partial_order(:)]; % partial_order includes start point
@@ -238,42 +242,14 @@ end
     
 
 	% calculate all shortest paths
-	for li = 1:length( l )
-		[dist( li, : ), paths, ~] = graphshortestpath( spdists, l( li ),'METHOD','Dijkstra');%, 'directed', false );
-		unreachable = (dist(li,:)==inf);
-        if (any(unreachable))
-            fprintf(['Warning: %g were unreachable. try increasing l'...
-                'or k.Your data is possibly non continous, ie '...
-                'has a completely separate cluster of points.'...
-                'Wanderlust will roughly estimate their distance for now'],...
-                sum(unreachable));
-            % find closest unreachable point to reachable points.
-            % connect it on the spdists. continue iteratively.
-            unreachablei = find(unreachable);
-            reachablei = find(~unreachable);
-            while ~isempty(unreachablei)
-                
-                [idx, d] = knnsearch(data(unreachablei, :), data(reachablei, :));
-                closest_reachable = d==min(d);
-                
-                %add connection to spdists
-                spdists(reachablei(closest_reachable),...
-                        unreachablei(idx(closest_reachable))) = min(d);
-                spdists(unreachablei(idx(closest_reachable)),...
-                        reachablei(closest_reachable)) = min(d);
-                % move points from unreachable list to reachable    
-                reachablei(end+1:end+length(find(closest_reachable))) = ...
-                        unreachablei(idx(closest_reachable));
-                unreachablei(idx(closest_reachable)) = [];
-            end
-            [dist( li, : ), paths, ~] = graphshortestpath( spdists, l( li ),'METHOD','Dijkstra');%, 'directed', false );
-        end
-
+	for idx = 1:length( l )
+		[dist( idx, : ), paths, ~] = graphshortestpath( spdists, l( idx ),'METHOD','Dijkstra');%, 'directed', false );
+		unreachable = find(dist(idx,:)==inf);
+        dist(idx,unreachable) = max(dist(idx, dist(idx,:)<inf));
 		if( verbose )
 			fprintf( 1, '.' );
         end
-    end
-    
+	end
     
     % adjust paths according to partial order by redirecting
     nPartialOrder = length(partial_order);
@@ -313,45 +289,6 @@ end
             traj( idx, : ) = traj( idx, : ) + idx_val;
         end
     end
-    
-%     order_land = sort(traj(1, l)); % grab start's perspective
-%     for i=2:length(l)
-%         idx_i = tiedrank(traj(i, l));
-%         disp(idx_i);
-%         
-%     end
-   
-% proposed = Dn;
-%     > reported = dist(:, l)
-% reported = reported./max(max(reported));
-%     diffdists = reported - proposed
-%     > suspicious = any(diffdists>.45);
-%     traj(end+1, l) = suspicious;
-% li = 104;
-% debug_plot(data(:, 1:2), l, li, traj)
-
-    % plot the first two components with the landmarks in red
-%     for li=1:length(l)
-%         try
-%             debug_plot(data(:, 1:2), l, li, dist);
-%         catch err
-%             disp(getReport(err,'extended'));
-%         end
-%     end
 end
 
-function debug_plot(data, l, li, traj)
-    cmap = jet(20);
-    plot_data = data(:, 1:2);
-    jittersize = 100;
-    c = zeros(size(plot_data, 1), 1);
-    c(l) = traj(li, l)./max(traj(li, l));
-    for k=1:length(l)
-        plot_data(end+1:end+jittersize, :) = repmat(plot_data(l(k), :), jittersize, 1) + randn(jittersize, 2)/100;
-        c(end+1:end+jittersize) = ones(1, jittersize) * (traj(li, l(k))./max(traj(li, l)));
-    end
-    
-    myplotclr(plot_data(:, 1), plot_data(:, 2), c, c, '.', cmap, [0 1], false)
-    colorbar;
-end
 

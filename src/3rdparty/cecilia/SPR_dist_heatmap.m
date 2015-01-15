@@ -13,7 +13,7 @@ function SPR_distances = SPR_dist_heatmap(data, cluster_channel, niter)
 
             cluster_marker_dist = data(cluster_channel == clusters_in_sample(j),i);
 
-            [score,pval,emd,mdiff,null] = SPR(pop_marker_dist, cluster_marker_dist, niter);
+            [score,pval,emd,mdiff,null] = SARA(pop_marker_dist, cluster_marker_dist, niter);
             
             SPR_distances(j,i) = score;
         end

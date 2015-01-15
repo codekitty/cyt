@@ -2,7 +2,7 @@ function create_cyt_session(X, channel_names, pathname, filename)
 % X - data matrix nXm
 % channel_names - OPTIONAL 1Xm length cell array of strings
 
-if (~exists('filename', 'var') || ~exists('pathname', 'var'))
+if (~exist('filename', 'var') || ~exist('pathname', 'var'))
     % get filename to save to
     [filename,pathname,~] = uiputfile('*.mat','Save Session');
 end

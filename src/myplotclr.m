@@ -33,7 +33,7 @@ function myplotclr(x,y,z,v,marker, map, clim, draw_grid)
 %
 
 %delete(gca)
-hold off;
+% hold off;
 if nargin <4
     marker='.';
     keep_bg = 0;

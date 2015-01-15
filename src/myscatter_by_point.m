@@ -21,13 +21,13 @@ hold off;
     for i=1:size(x),
 
         scatter(x(i),y(i), dot_size(i), colors(color_var(i),:), 'fill');
-
-        xlim(x_lim);
-        ylim(y_lim);
         hold on;
         
     end
-    
+ 
+	xlim(x_lim);
+    ylim(y_lim);
+
     %xlabel('tSNE1');
     %ylabel('tSNE2');
     
