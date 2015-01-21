@@ -74,6 +74,7 @@ G.Opts.lnn = [];
 G.Opts.landmarks = [];
 G.Opts.disallow = [];
 
+
 fn = fieldnames(Options);
 for j=1:length(fn)
     name = fn{j};
