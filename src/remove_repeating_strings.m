@@ -1,4 +1,6 @@
 function result = remove_repeating_strings(strings)
+result = strings;
+return;
     if isempty(strings)
         return;
     end

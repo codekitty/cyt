@@ -1212,15 +1212,15 @@ setpref('uipickfiles','figure_position',fig_pos)
 		set(navlist,P,navp)
 		set(pickslist,P,pckp)
 		
-		set(frame1,P,[navw+15 h-234 110 70])
-		set(openbut,P,[navw+30 h-194 80 20])
-		set(addbut,P,[navw+30 h-224 80 20])
+		set(frame1,P,[navw+5 h-234 110 70])
+		set(openbut,P,[navw+20 h-194 80 20])
+		set(addbut,P,[navw+20 h-224 80 20])
 		
 		frame2y = round((h-234 + 110 - 100)/2);
-		set(frame2,P,[w-pckw-125 frame2y 110 100])
-		set(removebut,P,[w-pckw-110 frame2y+70 80 20])
-		set(moveupbut,P,[w-pckw-110 frame2y+40 80 20])
-		set(movedownbut,P,[w-pckw-110 frame2y+10 80 20])
+		set(frame2,P,[w-pckw-115 frame2y 110 100])
+		set(removebut,P,[w-pckw-100 frame2y+70 80 20])
+		set(moveupbut,P,[w-pckw-100 frame2y+40 80 20])
+		set(movedownbut,P,[w-pckw-100 frame2y+10 80 20])
 		
 		set(done_button,P,[navw+30 80 80 30])
 		set(cancel_button,P,[navw+30 30 80 30])

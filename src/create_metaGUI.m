@@ -54,7 +54,7 @@ for i=1:length(varargin)-1
         set(hObject, 'Name', varargin{i+1});
     elseif(strcmp(varargin{i}, 'params'))
         params = varargin{i+1};
-        set(handles.txtNeighbors, 'String', num2str(params.neighbors));
+%         set(handles.txtNeighbors, 'String', num2str(params.neighbors));
         metrics = get(handles.pupMetric, 'String');
         metric = find(strcmpi(metrics, params.metric));
         set(handles.pupMetric, 'Value', metric);

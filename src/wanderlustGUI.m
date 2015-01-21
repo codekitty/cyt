@@ -74,11 +74,20 @@ for i=1:length(varargin)-1
         set(handles.txtKNeighbors, 'String', num2str(params.k));
         set(handles.txtLNeighbors, 'String', num2str(params.l));
         set(handles.txtNumGraphs, 'String', num2str(params.num_graphs));
+        set(handles.txtFlockLandmarks, 'String', num2str(params.flock_landmarks));
+        set(handles.txtSNN, 'String', num2str(params.snn));
         set(handles.txtNumLandmarks, 'String', num2str(params.num_landmarks));
         metrics = get(handles.pupMetric, 'String');
         metric = find(strcmpi(metrics, params.metric));
         set(handles.pupMetric, 'Value', metric);
-        set(handles.chkNormalize, 'Value', params.normalize);
+        voting_schemes = get(handles.pupVotingScheme, 'String');
+        voting_scheme = find(strcmpi(voting_schemes, params.voting_scheme));
+        set(handles.pupVotingScheme, 'Value', voting_scheme);
+        normalization_schemes = get(handles.pupNormalization, 'String');
+        normalization_scheme = find(strcmpi(normalization_schemes, params.normalization));
+        set(handles.pupNormalization, 'Value', normalization_scheme);
+        set(handles.chkBandSample, 'Value', params.band_sample);
+        set(handles.chkBranch, 'Value', params.branch);
         set(handles.lstGates, 'Value', params.selected_gate);
     elseif(strcmp(varargin{i}, 'gates'))
       set(handles.lstGates, 'String', varargin{i+1});
@@ -199,12 +208,23 @@ function W=runWanderlust
     W.l = str2num(get(handles.txtLNeighbors, 'String'));
     W.num_graphs = str2num(get(handles.txtNumGraphs, 'String'));
     W.num_landmarks = str2num(get(handles.txtNumLandmarks, 'String'));
+    W.snn = str2num(get(handles.txtSNN, 'String'));
+    W.flock_landmarks = str2num(get(handles.txtFlockLandmarks, 'String'));
 
     nMetric = get(handles.pupMetric, 'Value');
     strMetrics = get(handles.pupMetric, 'String');
     W.metric = strMetrics{nMetric};
         
-    W.normalize = get(handles.chkNormalize, 'Value');
+    nVotingScheme = get(handles.pupVotingScheme, 'Value');
+    strVotingSchemes = get(handles.pupVotingScheme, 'String');
+    W.voting_scheme = strVotingSchemes{nVotingScheme};
+        
+    nNormalization = get(handles.pupNormalization, 'Value');
+    strNorms = get(handles.pupNormalization, 'String');
+    W.normalization = strNorms{nNormalization};
+        
+    W.branch = get(handles.chkBranch, 'Value');
+    W.band_sample = get(handles.chkBandSample, 'Value');
 end
 
 % --- Executes on button press in btnCancel.

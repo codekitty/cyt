@@ -72,7 +72,11 @@ end
 
 for nc=1:size(map,1)
     iv = find(v>miv+(nc-1)*clrstep & v<=miv+nc*clrstep) ;
+%     if (nc==2)
+%     plot3(x(iv),y(iv),z(iv),marker,'color',map(nc,:),'markerfacecolor',map(nc,:), 'markersize', 12)
+%     else
     plot3(x(iv),y(iv),z(iv),marker,'color',map(nc,:),'markerfacecolor',map(nc,:))
+%     end
     if (nc==1)
         hold on;
     end
