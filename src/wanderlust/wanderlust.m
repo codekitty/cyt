@@ -197,13 +197,12 @@ else
         % use this irreliable observation to make sn faster
         
         nData = size(data,1);
-        rem = cell(0, nData);
+        rem = cell(1, nData);
 
         % for each point 1..n
-        parfor ci=1:size(data,1)
+        parfor ci=1:nData
             
-            % grab neighbors
-            
+            % grab neighbors            
             from = (ci-1)*G.Opts.l+1;
             to = ci*G.Opts.l;
             i_inds = from:to;
