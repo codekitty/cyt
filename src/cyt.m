@@ -2904,11 +2904,11 @@ function runWanderlust
 %         params.voting_scheme = 'exponential';
 %         params.flock_landmarks = 0;
 
-%  allow to self or zero
-        params.disallow = zeros(1, size(data,1));
-        params.disallow(ismember(gate_context, gates{end-3, 2})) = 1; %DN
-        params.disallow(ismember(gate_context, gates{end-1, 2})) = 2; %CD4
-        params.disallow(ismember(gate_context, gates{end, 2})) = 3; %CD8
+% %  allow to self or zero
+%         params.disallow = zeros(1, size(data,1));
+%         params.disallow(ismember(gate_context, gates{end-3, 2})) = 1; %DN
+%         params.disallow(ismember(gate_context, gates{end-1, 2})) = 2; %CD4
+%         params.disallow(ismember(gate_context, gates{end, 2})) = 3; %CD8
         
         % run wanderlust
         G = wanderlust(data,params);
