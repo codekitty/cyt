@@ -703,6 +703,9 @@ function isCtrlPressed=isCtrlPressed
     isCtrlPressed = ~isempty(find(ismember({'command'; 'control'},modifiers)));
 end
 
+
+
+
 function hidePlotControls
     handles = gethand;
 
@@ -2826,6 +2829,7 @@ function runWanderlust
     if (isempty(params) || ~isfield(params, 'l'))
         return;
     end
+    drawnow;
         
     % plot landmarks on some axis for debugging
     params.plot_landmark_paths = true;
@@ -2911,7 +2915,12 @@ function runWanderlust
 %         params.disallow(ismember(gate_context, gates{end, 2})) = 3; %CD8
         
         % run wanderlust
+        load('latest_lands.mat');
+        params.num_landmarks = latest_lands(2:end);
+        params.search_connected_components = false;
         G = wanderlust(data,params);
+        latest_lands = G.landmarks;
+        save('latest_lands.mat', 'latest_lands');
              
         % save results
         if(params.branch)

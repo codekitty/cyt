@@ -33,7 +33,8 @@ function G = wanderlust(data, Options)
 %                                  filter on landmarks
 %      [snn]                    : shared nearest neighbor
 %      [ann]                    : TODO - finalize - using Approx NN
-%      [search_connected_components] :TODO add the option to cancel
+%      [search_connected_components] : search for connected components if
+%                                   graph is discontious
 %      [lnn] :DEBUG precomputed lnn
 %      [landmarks] :DEBUG pre-chosen landmarks
 %      
@@ -103,6 +104,7 @@ for j=1:length(fn)
     elseif strcmpi(name,'lnn')              G.Opts.lnn = value; 
     elseif strcmpi(name,'landmarks')        G.Opts.landmarks = value; 
     elseif strcmpi(name,'disallow')        G.Opts.disallow = value; 
+    elseif strcmpi(name,'search_connected_components') G.Opts.search_connected_components = value;
     elseif strcmpi(name,'cell_clusters')         G.Opts.cell_clusters = value;
     elseif strcmpi(name,'end_clusters')        G.Opts.end_clusters = value;
     else   fprintf('Wanderlust.m: invalid option "%s" ignored.\n', name);
@@ -262,6 +264,20 @@ for graph_iter = 1:G.Opts.num_graphs
     else
         klnn = lnn;
     end
+    
+    G.Opts.minimum_incoming = 1;
+    if G.Opts.minimum_incoming > 0 
+       [i,j, s] = find(klnn);
+        tabs = tabulate(i);
+        inds = tabs((tabs(:,2)<G.Opts.minimum_incoming), 1);
+        i_new = i(~ismember(j, inds));
+        j_new = j(~ismember(j, inds));
+        s_new = s(~ismember(j, inds));
+        klnn = sparse(i_new, j_new, s_new);
+        % TODO if G.Opts.minimum_incoming>1 then we need to remove also the
+        % outgoing edges
+    end
+    
     klnn = spdists_undirected( klnn ); % TODO consider removing - outliers?
     G.lnn = klnn;
 
@@ -588,7 +604,7 @@ function spdists = spdists_klnn( spdists, k, verbose )
             fprintf( 1, '.' );
         end
     end
-    
+    dist(dist==inf) = max(max(dist~=inf));
     
     % adjust paths according to partial order by redirecting
     nPartialOrder = length(partial_order);
@@ -788,6 +804,7 @@ end
 
 function plot_landmark_paths(data, paths, l)
     figure('Color',[1 1 1]);
+    nData = size(data, 1);
     scatter (data(:, 1), data(:, 2), 2*ones(1, nData), '.b');
     hold on;
     plot(data(l(1), 1), data(l(1), 2), 'Xr');
@@ -799,4 +816,5 @@ function plot_landmark_paths(data, paths, l)
             plot(data(pathq, 1), data(pathq, 2), 'k-');
         end
     end
+    drawnow;
 end
