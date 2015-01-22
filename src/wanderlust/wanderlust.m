@@ -723,7 +723,7 @@ end
 
 function plot_landmark_paths(data, paths, l)
     figure('Color',[1 1 1]);
-    scatter (data(:, 1), data(:, 2));
+    scatter (data(:, 1), data(:, 2), 2*ones(1, nData), '.b');
     hold on;
     plot(data(l(1), 1), data(l(1), 2), 'Xr');
     scatter(data(l, 1), data(l, 2), 20*ones(numel(l), 1), 'or');
