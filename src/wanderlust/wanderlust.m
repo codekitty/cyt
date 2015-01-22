@@ -68,11 +68,13 @@ G.Opts.voting_scheme = 'linear';
 G.Opts.band_sample = true;
 G.Opts.flock_landmarks = 2;
 G.Opts.search_connected_components = true;
-G.Ops.plot_landmark_paths = false;
+G.Opts.plot_landmark_paths = false;
 G.Opts.plot_data = [data(:,1) data(:,2)];
 G.Opts.lnn = [];
 G.Opts.landmarks = [];
 G.Opts.disallow = [];
+G.Opts.cell_clusters = [];
+G.Opts.end_clusters = [];
 
 rng('shuffle');
 
@@ -101,9 +103,13 @@ for j=1:length(fn)
     elseif strcmpi(name,'lnn')              G.Opts.lnn = value; 
     elseif strcmpi(name,'landmarks')        G.Opts.landmarks = value; 
     elseif strcmpi(name,'disallow')        G.Opts.disallow = value; 
+    elseif strcmpi(name,'cell_clusters')         G.Opts.cell_clusters = value;
+    elseif strcmpi(name,'end_clusters')        G.Opts.end_clusters = value;
     else   fprintf('Wanderlust.m: invalid option "%s" ignored.\n', name);
     end
 end
+
+G.Opts
 
 % Build lNN graph
 if issparse( data ) 
@@ -238,7 +244,7 @@ else
 end
 
 % generate klNN graphs and iteratively refine a trajectory in each
-G.klnn = {}
+G.klnn = {};
 for graph_iter = 1:G.Opts.num_graphs
 	if( G.Opts.verbose )
 		fprintf( 1, 'iter #%d:\n', graph_iter );
@@ -253,10 +259,12 @@ for graph_iter = 1:G.Opts.num_graphs
    
     if (G.Opts.k~=G.Opts.l)
     	klnn = spdists_klnn( lnn, G.Opts.k, G.Opts.verbose );
-        klnn = spdists_undirected( klnn ); % TODO consider removing - outliers?
     else
         klnn = lnn;
     end
+    klnn = spdists_undirected( klnn ); % TODO consider removing - outliers?
+    G.lnn = klnn;
+
  
 	if( G.Opts.verbose )
 		fprintf( 1, ' done (%3.2fs)\n', toc( iter_t ) );
@@ -292,10 +300,14 @@ for graph_iter = 1:G.Opts.num_graphs
     
     if (G.Opts.branch)
         cl = setdiff(unique(RNK)', RNK(G.Opts.s));
-        W = W_orig;
-        W(ismember(iter_l,find(RNK==cl(1))), RNK==cl(2)) = 0;
-        W(ismember(iter_l,find(RNK==cl(2))), RNK==cl(1)) = 0;
-        W = W ./ repmat( sum( W ), size( W, 1 ), 1 );
+        if numel(cl) == 2
+            W = W_orig;
+            W(ismember(iter_l,find(RNK==cl(1))), RNK==cl(2)) = 0;
+            W(ismember(iter_l,find(RNK==cl(2))), RNK==cl(1)) = 0;
+            W = W ./ repmat( sum( W ), size( W, 1 ), 1 );
+        else 
+            fprintf( 'warning: no branch found');
+        end
     end
     
     t( 1,:)  = traj(1,:);
@@ -331,7 +343,7 @@ for graph_iter = 1:G.Opts.num_graphs
         end
 
         if (G.Opts.branch)
-            RNK = splittobranches(traj, t( end, : ),data, iter_l, dist,paths_l2l, G.Opts);
+            RNK = splittobranches(traj, traj(1, : ),data, iter_l, dist,paths_l2l, G.Opts);
             cl = setdiff(unique(RNK)', RNK(G.Opts.s));
             if numel(cl) == 2
                 W = W_orig;
@@ -372,7 +384,14 @@ for graph_iter = 1:G.Opts.num_graphs
     G.T(graph_iter, :) = t(realign_iter, :);
 
     if (G.Opts.branch)
+        % Recalculate branches post reassignments
+        [RNK, bp, diffdists] = splittobranches(traj, traj(1, : ),data, iter_l, ...
+            dist,paths_l2l, G.Opts);
         G.B(graph_iter, :) = RNK;
+        G.diffdists = diffdists;
+    else
+        G.B = G.T; % branch
+        G.bp(graph_iter) = 0;
     end
     
     if( G.Opts.verbose )
@@ -411,7 +430,7 @@ function spdists = spdists_klnn( spdists, k, verbose )
 	spdists( remove_edges ) = 0;
     end
 
-	function [ traj, dist, l, RNK,paths_l2l ] = trajectory_landmarks( spdists,data, G)
+	function [ traj, dist, l, RNK,paths_l2l, diffdists ] = trajectory_landmarks( spdists,data, G)
 	% [ traj, dist, l ] = trajectory_landmarks( spdists, s, n, verbose )
 	%
 	% calculate the trajectory score of each point in spdists.
@@ -484,6 +503,8 @@ function spdists = spdists_klnn( spdists, k, verbose )
         end
     end
 
+    diffdists = repmat(0, length(n), length(n));
+
     partial_order = [G.Opts.s;G.Opts.partial_order(:)]; % partial_order includes start point
 	l = [ partial_order; n(:) ]; % add extra landmarks if user specified
     
@@ -505,7 +526,7 @@ function spdists = spdists_klnn( spdists, k, verbose )
         cou = 0;
         while recalc && cou < 30
             cou = cou+1;
-            [dist( 1, : ), paths, ~] = graphshortestpath( spdists, s);%, 'directed', false );
+            [dist( 1, : ), paths, ~] = graphshortestpath( spdists, s, 'directed', false );
             recalc = false;
             for pathidx=2:numel(l) %iterate over path to each landmark
                 l_path = paths{l(pathidx)};
@@ -526,7 +547,7 @@ function spdists = spdists_klnn( spdists, k, verbose )
 	% calculate all shortest paths
     paths_l2l = cell(length(l));
     for li = 1:length( l )
-        [dist( li, : ), paths, ~] = graphshortestpath( spdists, l( li ),'METHOD','Dijkstra');%, 'directed', false );
+        [dist( li, : ), paths, ~] = graphshortestpath( spdists, l( li ),'METHOD','Dijkstra', 'directed', false );
         paths_l2l(li) = {paths(l)};
         unreachable = (dist(li,:)==inf);
         while (any(unreachable) && G.Opts.search_connected_components)
@@ -558,7 +579,7 @@ function spdists = spdists_klnn( spdists, k, verbose )
                     break;
                 end
             end
-            [dist( li, : ), paths, ~] = graphshortestpath( spdists, l( li ),'METHOD','Dijkstra');%, 'directed', false );
+            [dist( li, : ), paths, ~] = graphshortestpath( spdists, l( li ),'METHOD','Dijkstra', 'directed', false );
             paths_l2l(li) = {paths(l)};
             unreachable = (dist(li,:)==inf);
         end
@@ -612,24 +633,32 @@ function spdists = spdists_klnn( spdists, k, verbose )
         plot_landmark_paths(G.Opts.plot_data, paths_l2l, l);
     end
     if (G.Opts.branch)
-        [RNK, bp] = splittobranches(traj, traj(1, :), data, l, dist, paths_l2l, G.Opts);
+        [RNK, bp, diffdists] = splittobranches(traj, traj(1, :), data, l, dist, paths_l2l, G.Opts);
     end
 end
 
-function [RNK, pb] = splittobranches(trajs, t, data, landmarks, dist, paths_l2l, Opts)
+function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist, paths_l2l, Opts)
     
     proposed = repmat(t(landmarks), size(trajs, 1), 1);
     reported = trajs(1:length(landmarks), landmarks);
 
+    % Extract landmark clusters if specified
+    if (length(Opts.cell_clusters) > 0)
+        landmark_clusters = Opts.cell_clusters(landmarks);
+    else
+        landmark_clusters = [];
+    end
+
+
     % square matrix of the difference of perspectives landmark to landmark
     diffdists = abs(reported - proposed);
     diffdists = .5*(diffdists'+diffdists);
-    c = segmentlikemichealjordanwould(diffdists);
+    c = segmentlikemichealjordanwould(diffdists, landmark_clusters, Opts.end_clusters);
     
     % show wine glass with clusterization
-    [evec2, ~] = eig(diffdists);
-    evec2 = evec2(:, 2);
-    [~, idx] = sort(evec2);
+    % [evec2, ~] = eig(diffdists);
+    % evec2 = evec2(:, 2);
+    % [~, idx] = sort(evec2);
 %     figure('Color',[1 1 1]);
 %     scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c(idx));
 %     figure('Color',[1 1 1]);
@@ -641,6 +670,17 @@ function [RNK, pb] = splittobranches(trajs, t, data, landmarks, dist, paths_l2l,
     
     % to pinpoint branch - look into the min (traj) of the paths from one cluster to the
     % other
+    % Branch of the start cluster (Trunk)
+    if (length(landmark_clusters) > 0 )
+        table = tabulate(c(landmark_clusters == landmark_clusters(1)));
+        trunk = table(table(:,2) == max(table(:,2)), 1);
+        if (length(trunk) > 1)
+            trunk = c(1);
+        end
+    else
+        trunk = c(1);
+    end
+
     c_branch = setdiff(unique(c)', c(1)); % the branch indices
     paths_branch_a = paths_l2l(c==c_branch(1));
     paths_branch_b = paths_l2l(c==c_branch(2));
@@ -660,11 +700,18 @@ function [RNK, pb] = splittobranches(trajs, t, data, landmarks, dist, paths_l2l,
     end
     
     % reassign to clusters based on branch point
-    pb = prctile(fork_p, 10);
+    pb = prctile(fork_p, 50);
     c_new = c;
-    c_new(t(landmarks)' <= pb) = c(1);
-    c_new(evec2<0 & t(landmarks)' >= pb) = c_branch(1);
-    c_new(evec2>0 & t(landmarks)' >= pb) = c_branch(2);
+    [~,I] = min(abs(dist(1:numel(landmarks), :)));
+    RNK = c_new(I);
+    % c_new(t(landmarks)' <= pb) = c(1);
+    % c_new(evec2<0 & t(landmarks)' >= pb) = c_branch(1);
+    % c_new(evec2>0 & t(landmarks)' >= pb) = c_branch(2);
+    reassign_landmarks = find(t(landmarks)' > pb & c_new == trunk);
+    median1 = median(dist(reassign_landmarks, find(RNK == c_branch(1)))');
+    median2 = median(dist(reassign_landmarks, find(RNK == c_branch(2)))');
+    c_new(reassign_landmarks(median1 >= median2)) = c_branch(2);
+    c_new(reassign_landmarks(median2 > median1)) = c_branch(1);
     
     if (numel(unique(c_new))<3)
         % we have an empty branch
@@ -701,24 +748,42 @@ function [RNK, pb] = splittobranches(trajs, t, data, landmarks, dist, paths_l2l,
     RNK = c_new(I);
 end
 
-function c=segmentlikemichealjordanwould(data)
-sigma = 10000;
-sigma = prctile(data(:), 97);
+function c=segmentlikemichealjordanwould(data, clusters, end_clusters)
+    sigma = prctile(data(:), 97);
 
-% form affinity matrix with gaussian eucliean distance
-A = exp((-.5*(1/sigma^2)).*pdist2(data, data).^2);
+    % form affinity matrix with gaussian eucliean distance
+    A = exp((-.5*(1/sigma^2)).*pdist2(data, data).^2);
 
-% compute the laplacian
-D = diag(sum(A,2).^(-.5));
-L = D*A*D;
+    % compute the laplacian
+    D = diag(sum(A,2).^(-.5));
+    L = D*A*D;
 
-% find x1,x2,x3 the 3 largest eigenvector of L (chosen to be orthogonal in
-% case of repeated?)
-[evec, eval] = eig(L);
-X = evec(:, [1 2 3]);
-Y = X./repmat(sqrt(sum(X.^2,2)), 1, size(X, 2));
-c = kmeans(Y, 3);
+    % Kmeans on normalized eigen vectors
+    [evec, eval] = eig(L);
 
+    % Identify non repeated eigen values and vectors
+    temp = round(max(eval) * 10^5)/10^5;
+    table = tabulate(temp);
+    non_repeated_eigs = ismember(temp, table(table(:,2) == 1,1));
+    evec = evec(:,non_repeated_eigs);
+    eval = eval(:,non_repeated_eigs);
+
+    % Identify the top eigen values
+    [~, idx] = sort(max(eval), 'descend');
+    X = evec(:, idx(1:10));
+    Y = X./repmat(sqrt(sum(X.^2,2)), 1, size(X, 2));
+
+    % Initialize kmeans
+    if length(end_clusters) > 0
+        medians = [];
+        for c = 1:length(end_clusters)
+            medians(c,:) =  median(Y(clusters == end_clusters(c),:));
+        end
+
+        c = kmeans(Y, [], 'start', medians);
+    else
+        c = kmeans(Y, 3);
+    end
 end
 
 function plot_landmark_paths(data, paths, l)
