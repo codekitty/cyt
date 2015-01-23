@@ -65,7 +65,28 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
     
     cd(curr_path);
     
-
+    %checking for old tsne results for the same data
+    
+    fileCheck= exist ('tsneResults.mat', 'file');
+    
+    if (fileCheck==0) %no file
+        mapMat = containers.Map(); % hash map for matrix name and tsne output
+        hashMat= DataHash(X); %getting the  matrix hash
+    else
+        file= load('tsneResults.mat') %loading the old tsne results
+        mapMat=file.mapMat;
+        
+        hashMat= DataHash(X); %getting the  matrix hash
+        check = isKey(mapMat,hashMat); %check for key in the hash map
+    
+        if (check==1) %no need to run tsne again->returning old result
+            value=values(mapMat,{hashMat});
+            mappedX=value{1};
+            return;  
+        end
+    end
+ 
+    
     % Perform the initial dimensionality reduction using PCA
     X = double(X);
     X = bsxfun(@minus, X, mean(X, 1));
@@ -111,6 +132,16 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
     landmarks = landmarks + 1;              % correct for Matlab indexing
     delete('data.dat');
     delete('result.dat');
+    
+    % while the hash map is too big removing the first element
+    if length(mapMat)>20 
+        lstKeys= keys(mapMat); 
+        remove(mapMat,lstKeys(1));
+    end
+    
+    mapMat(hashMat)=mappedX; %adding the name and tsne result to hashmap
+    
+    save('tsneResults.mat','mapMat'); %saving into file
     
     cd(work_dir);
 end
