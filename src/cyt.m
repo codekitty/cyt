@@ -109,9 +109,9 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
     case1PlotTypes = {...	% plot options for a single selected channel
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
-          'Plot along time',        @plot_along_time};
-%           'Plot sample clusters',   @plot_sample_clusters;
-%           'Plot meta clusters',     @plot_meta_clusters};
+          'Plot along time',        @plot_along_time;
+           'Plot sample clusters',   @plot_sample_clusters;
+           'Plot meta clusters',     @plot_meta_clusters};
 
           
     case2PlotTypes = {... 	% plot options for 2 selected channels
@@ -119,24 +119,24 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
 %           'Density',                @plotDensity;
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
-          'Plot along time',        @plot_along_time};
-%           'Plot sample clusters',   @plot_sample_clusters;
-%           'Plot meta clusters',     @plot_meta_clusters};
+          'Plot along time',        @plot_along_time;
+           'Plot sample clusters',   @plot_sample_clusters;
+           'Plot meta clusters',     @plot_meta_clusters};
           
 	case3PlotTypes = {...	% plot options for 3 selected channels
           'Scatter',                @plotScatter;
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
-          'Plot along time',        @plot_along_time};
-%           'Plot sample clusters',   @plot_sample_clusters;
-%           'Plot meta clusters',     @plot_meta_clusters};
+          'Plot along time',        @plot_along_time;
+           'Plot sample clusters',   @plot_sample_clusters;
+           'Plot meta clusters',     @plot_meta_clusters};
       
 	case4PlusPlotTypes = {...	% plot options for 4 or more selected channels
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
-          'Plot along time',        @plot_along_time};
-%           'Plot sample clusters',   @plot_sample_clusters;
-%           'Plot meta clusters',     @plot_meta_clusters};
+          'Plot along time',        @plot_along_time;
+           'Plot sample clusters',   @plot_sample_clusters;
+           'Plot meta clusters',     @plot_meta_clusters};
 
     plotTypes = {case0PlotTypes, case1PlotTypes,...
         case2PlotTypes, case3PlotTypes, case4PlusPlotTypes};
@@ -448,6 +448,11 @@ function OpenMenuItem_Callback(~, ~, ~)
     set(handles.lstIntGates,'String',gates(:, 1));
     
     set(handles.lstChannels,'Value',[]); % Add this line so that the list can be changed
+    %lior check
+    set(handles.lstCluChannels,'Value',[]);
+    set(handles.lstCluChannels,'String',[]); % Add this line so that the list can be changed
+    
+    
     
     % make sure axis popups are visible and filled out
     set(handles.plotChannels, 'Visible','on','Enable','on');
@@ -598,7 +603,7 @@ function lstGates_Callback(~, ~, ~)
     setChannelNamesToAxis(handles.lstClusterChannels, channel_names);
     setChannelNamesToAxis(handles.lstMetaClusterChannels, channel_names);
     setChannelNamesToAxis(handles.lstBasisOfMetaChannel, channel_names);
-    setChannelNamesToAxis(handles.lstTsneColorBy, channel_names);
+    setChannelNamesToAxis(handles.lstTsneColorBy, ['Gates' channel_names(:)']);
     setChannelNamesToAxis(handles.lstFunctionalXAxis, channel_names);
     setChannelNamesToAxis(handles.pupXAxis, channel_names);
     setChannelNamesToAxis(handles.pupYAxis, channel_names);
@@ -1071,20 +1076,25 @@ function plot_sample_clusters(cluster_channel)
     initClusterSelection = size(session_data, 2);
     
     %find cluster channel
-    cluster_channel      = get(handles.lstClusterChannels, 'Value');
+    cluster_channel = get(handles.lstClusterChannels, 'Value');
     if isempty(cluster_channel) || ~isDiscrete(cluster_channel) || length(unique(session_data(gate_context, cluster_channel))) > 500, %if channels is empty or channel is not discrete or the number of clusters is too large
 %         [s,v] = listdlg('PromptString','Select a cluster channel:',...
-%                 'SelectionMode','single',...
-%                 'InitialValue', initClusterSelection,...
-%                 'ListString',channel_names);
-        if ~v
-            return;
-        elseif ~isDiscrete(cluster_channel)
-            return;
-        elseif length(unique(cluster_channel)) > 500,
-            return;
-        end
-        cluster_channel = s;
+%                  'SelectionMode','single',...
+%                  'InitialValue', initClusterSelection,...
+%                  'ListString',channel_names);
+%         cluster_channel = s;
+%         
+%         if ~v
+%             return;
+%         elseif ~isDiscrete(cluster_channel)
+%             return;
+%         elseif length(unique(cluster_channel)) > 500,
+%             return;
+%         end
+        return;
+        
+        %set(handles.lstClusterChannels, 'value', cluster_channel);
+        
     end
 
     
@@ -1172,20 +1182,30 @@ function plot_sample_clusters(cluster_channel)
         %plot heat map
         %subplot(10,1,1:9), imagesc(hl_L2_dist, [heat_min,heat_max]);
 
-        subplot(10,1,1:9), imagesc(marker_means);
+        % add this if the channels name are cut off
+%         subplot(10,1,1:9); 
+        imagesc(marker_means);
         %set(title(strcat('Sample ', mat2str(p), ': L2 + higher/lower than median')));
-        set(gca, 'Position', [0.18,0.27,0.8,0.66]);
+%         set(gca, 'Position', [0.18,0.27,0.8,0.66]);
         set(gca, 'ytick', 1:num_clusters);
         if (show_by_cluster_channel)
-            y_labs = strcat(strread(num2str(unique(session_data(gate_context, cluster_channel))'), '%s'),' (',strread(num2str(cells_pr_cluster'), '%s'),')');
+            y_labs = strcat(...
+                strread(num2str(unique(session_data(gate_context, cluster_channel))'), '%s'),...
+                ' (',...
+                num2str(cells_pr_cluster*100,'%2.2f'),...
+                '%)');
         else
-            y_labs = strcat(gates(selected_gates, 1),' (',strread(num2str(cells_pr_cluster'), '%s'),')');            
+            y_labs = strcat(...
+                gates(selected_gates, 1),...
+                ' (',...
+                num2str(cells_pr_cluster*100,'%2.2f'),...
+                ')');            
         end
         set(gca, 'Yticklabel', y_labs);
         set(gca, 'xtick', []);
         colormap(color_map);
         colorbar;
-        xticklabel_rotate([1:length(selected_channels)],90,channel_names(selected_channels));
+        xticklabel_rotate(1:length(selected_channels),75,strcat(channel_names(selected_channels), {' '}));
         
         
     elseif strcmp(plot_type,'Heat map: Distance')
@@ -1567,7 +1587,7 @@ function createMeta
         params.cluster_channel = 1;
         %params.all_channels = numel(channel_names');
     end
-    
+    params.selected_gates = gate_names;
     params = create_metaGUI('gates', gate_names, 'params', params);
     if (isempty(params))
         return;
@@ -1722,7 +1742,7 @@ function plot_meta_clusters(cluster_channel)
         dot_size = 500/max(cluster_mapping(:,5)) * cluster_mapping(:,5)+5;  %rescaling size so they make sense size wise
         
         %finding previous tSNE or calculating tSNE
-        tSNE_out = retr('tsneParams');
+        tSNE_out = []; %retr('tsneParams');
         if (isempty(tSNE_out)),
             if (size(centroids, 1) > 10)
                 tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
@@ -1730,19 +1750,33 @@ function plot_meta_clusters(cluster_channel)
                 tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
             end
         end
-        put('tsneParams', tSNE_out);
+        %put('tsneParams', tSNE_out);
         
         %finding color channel
         color_chan = get(handles.lstTsneColorBy,'Value');        
-        
+        color_chan = color_chan-1;
         %testing if color_chan is discrete (= maybe cluster channel) or continous (maybe marker channel)
         %if isDiscrete(color_chan) && length(unique(session_data(gate_context, color_chan))) < 500,
-        if color_chan == meta_channel,
+        if (color_chan<0)
+            return;
+        elseif color_chan ==0 % color by gate         
+            tsne_col = cluster_mapping(:,3);
+    % matColors = distinguishable_colors(p);
+
+    matColors = [[5, 5, 255];[ 0, 221, 225];[ 0, 88, 0];...
+                [ 255, 132, 132];[ 70, 79, 158];[ 193, 255, 0];...
+                [ 149, 132, 0];[ 123, 0, 0];[ 79, 211, 149];...
+                [ 220, 158, 246];[ 255, 18, 211];[ 106, 26, 123];...
+                [ 97, 18, 246];[ 225, 193, 255];[ 123, 167, 141];...
+                [ 9, 132, 246];[ 0, 113, 132];[ 230, 213, 132];...
+                [ 113, 13, 132];[ 22, 08, 86];[ 82, 12, 3]]./255;
+            colormap(matColors);
+            scatter(tSNE_out(:,1), tSNE_out(:,2), (dot_size+31)*1, tsne_col,'fill'); %plotting
+%             legend(gate_names);
+        elseif color_chan == meta_channel,
             tsne_col = cluster_mapping(:,1);
             scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size); %plotting
-
-        else
-            
+        else    
             %finding marker means for marker selected
             inds = {};
     
@@ -2764,7 +2798,8 @@ function runTSNE(normalize)
 %     new_selected_channels = selected_channels(prctile(data, 99) >= 2.2);
 %     set(handles.lstChannels,'Value', new_selected_channels);
 %     data(:, prctile(data, 99) < 1.2) = [];
-      
+    
+    
     map = fast_tsne(data, 110);
 %     map = tsne(data, [], ndims);
     disp(sprintf('map generated in %g m', toc/60));
@@ -3184,6 +3219,19 @@ function pupAxis_Callback(~, ~, ~)
     plotScatter;
 end
 
+function btnGatesContextMenu_Callback(hObject, ~, ~)
+     handles = gethand;
+     ctm = get(handles.lstGates, 'UIContextMenu'); 
+     showcontextmenu(hObject,ctm);
+end
+
+function btnChannelsContextMenu_Callback(hObject, ~, ~)
+     handles = gethand;
+     ctm = get(handles.lstChannels, 'UIContextMenu'); 
+     showcontextmenu(hObject,ctm);
+end
+
+
 % --- Executes on selection change in pupXAxis.
 function pupDensAxis_Callback
     handles = gethand;
@@ -3237,6 +3285,36 @@ function btnIntersect_Callback(hObject, ~, ~)
     
     lstGates_Callback;
 end
+
+% --- Executes on button press in btnCluster.
+function btnCluster_Callback(hObject, ~, ~)
+    
+    if get(hObject,'Value')
+    	% Toggle button is pressed-take appropriate action
+        set(hObject, 'cdata', brighten(double(get(hObject, 'cdata')), double(-0.5)));
+        
+        handles = gethand;
+        
+        pos = get(handles.lstChannels, 'Position');
+        pos(3) = pos(3)/2.2;
+        set(handles.lstChannels, 'Position', pos);
+  
+        set(handles.lstCluChannels, 'Visible', 'on');
+    else
+    	% Toggle button is not pressed-take appropriate action
+        set(hObject, 'cdata', brighten(double(get(hObject, 'cdata')), double(double(0.5))));
+
+        handles = gethand;
+        pos = get(handles.lstChannels, 'Position');
+        pos(3) = pos(3)*2.2;
+        set(handles.lstChannels, 'Position', pos);
+  
+        set(handles.lstCluChannels, 'Visible', 'off');
+    end
+    
+    lstChannels_Callback;
+end
+
 
 function refreshGates
     handles = gethand;
@@ -3994,6 +4072,11 @@ function lstIntGates_Callback(~, ~, ~)
 lstGates_Callback;
 end
 
+% --- Executes on selection change in lstCluChannels.
+function lstCluChannels_Callback(~, ~, ~)
+lstChannels_Callback;
+end
+
 % --- Executes on selection change in pupKNN.
 function pupKNN_Callback(hObject, eventdata, handles)
     plotScatter;
@@ -4072,16 +4155,31 @@ function btnTransformGate_CreateFcn(hObject, ~, ~)
 end
 
 % --- Executes during object creation, after setting all properties.
-function btnContextMenu_CreateFcn(hObject, ~, ~)
+function btnGatesContextMenu_CreateFcn(hObject, ~, ~)
+    placeIcon(hObject, 'gear.gif');
+end
+
+function btnChannelsContextMenu_CreateFcn(hObject, ~, ~)
     placeIcon(hObject, 'gear.gif');
 end
 
 function btnIntersect_CreateFcn(hObject, ~, ~)
-    placeIcon(hObject, 'intersect.png');
+    placeIcon(hObject, 'intersect.gif');
+end
+
+function btnClusters_CreateFcn(hObject, ~, ~)
+    placeIcon(hObject, 'cluster.gif');
 end
 
 % --- Executes during object creation, after setting all properties.
 function lstIntGates_CreateFcn(hObject, ~, ~)
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+end
+
+% --- Executes during object creation, after setting all properties.
+function lstCluChannels_CreateFcn(hObject, ~, ~)
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end

@@ -1,6 +1,6 @@
 % PhenoGraph: Robust graph-based phenotype discovery
 % -----------------------------------------------------------------------
-%  [labels,G] = phenograph( data, k, varargin )
+%  [labels,G,c,Q] = phenograph( data, k, varargin )
 %
 % INPUT:
 %     data - n x d matrix of n single cells
@@ -14,8 +14,10 @@
 %     labels - n x 1 vector of cluster assignments
 %     G      - n x n sparse matrix representation of the (lower triangle)
 %              of the Jaccard graph used for community detection
+%     c      - cell array of Louvain hierarchies
+%     Q      - array of modularity scores for the corresponding partitions
 % -----------------------------------------------------------------------
-function [labels,G] = phenograph( data, k, varargin )
+function [labels,G,c,Q] = phenograph( data, k, varargin )
 
 distance = 'euclidean';
 graphtype = 'jaccard';

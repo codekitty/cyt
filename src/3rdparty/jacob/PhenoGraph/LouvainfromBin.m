@@ -1,5 +1,8 @@
 function [c,Q,bestpartition] = LouvainfromBin( filename, numiters )
-ps = strcat(pwd,'/src/3rdparty/jacob/louvain'); %the path to louvain in each cyt
+ %the path to louvain in each cyt
+[curr_path, ~, ~] = fileparts(mfilename('fullpath'));
+curr_path = [curr_path filesep];
+ps = [curr_path 'Louvain' filesep];
 
 if isempty(ps)
     error('Please enter the path to Louvain C++ code')
@@ -12,9 +15,7 @@ fprintf(1,'%s\n', command );
 system( command );
 % run community detection
 for iter = 1:numiters
-    if mod(numiters,100)==0
-        numiters
-    end
+    
     fprintf(1,'MATLAB: running community detection, ITERATION %i\n', iter );
     command = [ps '/community ' filename '_graph.bin -l -1 -v -w ' filename '_graph.weights > ' filename '.tree'];
     fprintf( 1, '%s\n', command );

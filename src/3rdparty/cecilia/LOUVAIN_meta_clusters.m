@@ -33,17 +33,19 @@ function [cluster_mapping, centroids, meta_cluster_channel] = LOUVAIN_meta_clust
     end
     
     cluster_mapping = horzcat(linspace(1,size(cluster_mapping,1),size(cluster_mapping,1))', cluster_mapping, cluster_sizes');   %col1 = cluster number, col2=sample number, col3=withing sample cluster number
-    
-    % create a sparse KNN matrix
-    sparse_adjacency_matrix = spdists_knngraph(centroids, nKNeighbors, lower(metric), 5000);  %why 5000?
+  
+    [meta_clusters, ~] = phenograph(centroids, nKNeighbors,'distance',lower(metric));
 
-    % Call louvain's matlab implementation
-	[cmty, mod] = spdists_louvain(sparse_adjacency_matrix);
+%     % create a sparse KNN matrix
+%     sparse_adjacency_matrix = spdists_knngraph(centroids, nKNeighbors, lower(metric), 5000);  %why 5000?
+% 
+%     % Call louvain's matlab implementation
+% 	[cmty, mod] = spdists_louvain(sparse_adjacency_matrix);
     
-    %finding level with highest modularity
-    mod_high = mod(end);
-    meta_clusters = cmty{find(mod == mod_high, 1,'first')};
-    cluster_mapping = horzcat(meta_clusters, cluster_mapping);
+%     %finding level with highest modularity
+%     mod_high = mod(end);
+%     meta_clusters = cmty{find(mod == mod_high, 1,'first')};
+     cluster_mapping = horzcat(meta_clusters, cluster_mapping);
     
     %creating meta_cluster_channel
     meta_cluster_channel = [];
