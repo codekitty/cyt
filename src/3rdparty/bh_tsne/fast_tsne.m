@@ -82,7 +82,7 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
         if (check==1) %no need to run tsne again->returning old result
             value=values(mapMat,{hashMat});
             mappedX=value{1};
-            retuen;  
+            return;  
         end
     end
  
