@@ -110,8 +110,10 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
           'Plot along time',        @plot_along_time;
-           'Plot sample clusters',   @plot_sample_clusters;
-           'Plot meta clusters',     @plot_meta_clusters};
+          'Plot heat map',          @plot_cluster_heat_map;
+          'Plot cluster tsne',      @plot_cluster_tsne;
+          'Plot sample clusters',   @plot_sample_clusters;
+          'Plot meta clusters',     @plot_meta_clusters};
 
           
     case2PlotTypes = {... 	% plot options for 2 selected channels
@@ -120,23 +122,29 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
           'Plot along time',        @plot_along_time;
-           'Plot sample clusters',   @plot_sample_clusters;
-           'Plot meta clusters',     @plot_meta_clusters};
+          'Plot heat map',          @plot_cluster_heat_map;
+          'Plot cluster tsne',      @plot_cluster_tsne;
+          'Plot sample clusters',   @plot_sample_clusters;
+          'Plot meta clusters',     @plot_meta_clusters};
           
 	case3PlotTypes = {...	% plot options for 3 selected channels
           'Scatter',                @plotScatter;
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
           'Plot along time',        @plot_along_time;
-           'Plot sample clusters',   @plot_sample_clusters;
-           'Plot meta clusters',     @plot_meta_clusters};
+          'Plot heat map',          @plot_cluster_heat_map;
+          'Plot cluster tsne',      @plot_cluster_tsne;
+          'Plot sample clusters',   @plot_sample_clusters;
+          'Plot meta clusters',     @plot_meta_clusters};
       
 	case4PlusPlotTypes = {...	% plot options for 4 or more selected channels
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
           'Plot along time',        @plot_along_time;
-           'Plot sample clusters',   @plot_sample_clusters;
-           'Plot meta clusters',     @plot_meta_clusters};
+          'Plot heat map',          @plot_cluster_heat_map;
+          'Plot cluster tsne',      @plot_cluster_tsne;
+          'Plot sample clusters',   @plot_sample_clusters;
+          'Plot meta clusters',     @plot_meta_clusters};
 
     plotTypes = {case0PlotTypes, case1PlotTypes,...
         case2PlotTypes, case3PlotTypes, case4PlusPlotTypes};
@@ -355,7 +363,7 @@ function OpenMenuItem_Callback(~, ~, ~)
         
 
         %Read in data    
-        csvdats = cellfun(@(fname) csvread(fname, 1,0), files, 'UniformOutput', false);
+        csvdats = cellfun(@(fname) csvread(fname, 1,1), files, 'UniformOutput', false);
         
         %Add data to session
         disp(sprintf('Files loaded: %gs',toc));
@@ -1042,6 +1050,144 @@ function plot_along_time(time_channel)
     if (by_gate)
         title(channel_names(selected_channels(1)), 'Interpreter', 'none');
     end
+end
+
+function plot_cluster_heat_map
+    handles = gethand; 
+
+    % clear the figure panel
+    cla;
+    colormap jet;
+    legend('off');
+    colorbar('delete');
+    axis auto;
+    
+    % show controls
+    if ~isCtrlPressed
+        set(handles.pnlClusterControls, 'Visible', 'on');
+    end
+
+	hPlot = subplot(1,1,1,'Parent',handles.pnlPlotFigure);
+    box on;
+
+    session_data = retr('sessionData'); % all data
+    gates        = retr('gates');
+    gate_context = retr('gateContext'); % indices currently selected
+    if isempty(gate_context)
+        return;
+    end
+    
+    selected_channels = get(handles.lstChannels, 'Value');
+    channel_names     = retr('channelNames');
+    selected_gates    = get(handles.lstGates, 'Value');
+    gate_names        = gates(selected_gates, 1);
+        
+    %find cluster channel
+    cluster_channel = get(handles.lstCluChannels, 'Value');
+    channel_index = retr('current_cluster_channels');
+    cluster_channel = channel_index(cluster_channel);
+     
+    show_by_cluster_channel = true;
+    % use cluster channel (we should just have gates as the first option
+    % for cluster channel
+    if (show_by_cluster_channel)
+        num_clusters = length(unique(session_data(gate_context, cluster_channel)));
+
+        %finding mean values of marker levels for each cluster
+        marker_means = zeros(num_clusters, length(selected_channels));
+        data = session_data(gate_context, selected_channels);
+
+        %looping through clusters
+        clusters_in_sample = unique(session_data(gate_context, cluster_channel));
+        for i=1:length(clusters_in_sample)
+            marker_means(i,:) = mean(data(session_data(gate_context, cluster_channel)==clusters_in_sample(i),:),1);
+        end
+        marker_means = mynormalize(marker_means, 100);
+
+        %find percentage of cells belonging to each cluster
+        cells_pr_cluster = countmember(unique(session_data(gate_context, cluster_channel)),session_data(gate_context,cluster_channel))/length(gate_context);
+    
+    % else - this is for future...
+    else
+        num_clusters = length(selected_gates);
+
+        %finding mean values of marker levels for each cluster
+        marker_means = zeros(num_clusters, length(selected_channels));
+        data = session_data(gate_context, selected_channels);
+
+        %looping through gates
+        for i=1:numel(selected_gates)
+            marker_means(i,:) = mean(session_data(gates{selected_gates(i),2},selected_channels),1);
+        end
+        marker_means = mynormalize(marker_means, 100);
+
+        %find percentage of cells belonging to each cluster
+        cells_pr_cluster = cellfun(@(v)length(v), gates(selected_gates, 2))/length(gate_context);
+    end
+
+    % === plot heat map ===
+    imagesc(marker_means);
+
+    %find color scheme
+    color = get(handles.popSampleHeatColor, 'Value');
+
+    %finding basis for min and max for color scaling
+    heat_min = min(min(marker_means));
+    heat_max = max(max(marker_means));
+
+    if color == 1,
+        color_map = interpolate_colormap(redbluecmap, 64);
+
+        %adjusting heatmap color scaling
+        if abs(heat_min) > heat_max,
+            heat_max = abs(heat_min);
+        elseif heat_min < 0,
+            heat_min = -heat_max;
+        end
+    elseif color == 2,
+        color_map = color_map_creator('rg');
+
+        %adjusting heatmap color scaling
+        if abs(heat_min) > heat_max,
+            heat_max = abs(heat_min);
+        elseif heat_min < 0,
+            heat_min = -heat_max;
+        end
+    elseif color == 3,
+        color_map = interpolate_colormap(othercolor('YlOrBr9'), 64);
+    end
+            
+    % set color map
+    colormap(color_map);
+    colorbar;
+
+        %set(title(strcat('Sample ', mat2str(p), ': L2 + higher/lower than median')));
+%         set(gca, 'Position', [0.18,0.27,0.8,0.66]);
+
+    % show cluster information
+    set(gca, 'ytick', 1:num_clusters);
+    if (show_by_cluster_channel)
+        y_labs = strcat(...
+            strread(num2str(unique(session_data(gate_context, cluster_channel))'), '%s'),...
+            ' (',...
+            num2str(cells_pr_cluster*100,'%2.2f'),...
+            '%)');
+    else
+        y_labs = strcat(...
+            gates(selected_gates, 1),...
+            ' (',...
+            num2str(cells_pr_cluster*100,'%2.2f'),...
+            ')');            
+    end
+    set(gca, 'Yticklabel', y_labs);
+    
+    % show channel information 
+    set(gca, 'xtick', []);
+    xticklabel_rotate(1:length(selected_channels),75,strcat(channel_names(selected_channels), {' '}));
+end
+
+function plot_cluster_tsne
+
 end
 
 function plot_sample_clusters(cluster_channel)
