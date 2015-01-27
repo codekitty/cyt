@@ -2915,8 +2915,8 @@ function runWanderlust
 %         params.disallow(ismember(gate_context, gates{end, 2})) = 3; %CD8
         
         % run wanderlust
-        load('latest_lands.mat');
-        params.num_landmarks = latest_lands(2:end);
+%         load('latest_lands.mat');
+%         params.num_landmarks = latest_lands(2:end);
         params.search_connected_components = false;
         G = wanderlust(data,params);
         latest_lands = G.landmarks;
@@ -4839,7 +4839,37 @@ function openEndedAction
     gates         = retr('gates'); % all gates (names\indices) in cell array
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
- 
+    
+    
+%     % manu - reverse a result computed from a branch
+%     wanderlust = session_data(gate_context, selected_channels(1));
+%     branch     = session_data(gate_context, selected_channels(2));
+%     
+%     % 1 - trunk
+%     % 2 - traj start
+%     % 3 - other branch
+%     
+%     % normalize into realigned wanderlust
+%     wanderlust_new = wanderlust-min(wanderlust);
+%     wanderlust_new = wanderlust_new./max(wanderlust_new);
+%     
+% %     shift = 1-max(wanderlust_new(branch==1));
+%     
+%     % grab trunk points and reverse them and place them at zero
+%     wanderlust_new(branch==1) = max(wanderlust_new(branch==1))-wanderlust_new(branch==1);
+%     
+%     % now grab other branch and shift it to attach to the end of trunk
+%     wanderlust_new(branch==3) = wanderlust_new(branch==3) - (min (wanderlust_new(branch==3)) - max(wanderlust_new(branch==1)));
+% 
+%     % shift and reverse starting branch
+%     wanderlust_new(branch==2) = 1-wanderlust_new(branch==2);
+%     
+%     % add channels
+%     addChannels({'realigned_wander'}, wanderlust_new);
+%     
+%     return;
+    
+    % run diffusion map - return 6 eigs
     data = session_data(gate_context, selected_channels);
     XOpts = struct('NumberOfPoints',1000,...
         'Dim',2,...
@@ -4860,7 +4890,13 @@ function openEndedAction
     GraphDiffOpts.DontReturnDistInfo=0;
     G = GraphDiffusion(data', 0, GraphDiffOpts);  
    
-    addChannels({'e1','e2','e3','e4','e5','e6'},G.EigenVecs(:, 1:6));
+%     addChannels({'e1','e2','e3','e4','e5','e6'},G.EigenVecs(:, 1:6));
+    E2 = G.EigenVecs(:, 2);
+    E2 = E2-min(E2);
+    E2 = E2./max(E2);
+    E2 = 1-E2;
+    addChannels({'E2','E2 reversed'}, [G.EigenVecs(:, 2) E2]); 
+    
 %     addChannels({'t1','t2','t3'},G.T(:, 1:3));
 %     addChannels({'w1','w2','w3'},G.W(:, 1:3));
 %     addChannels({'p1','p2','p3'},G.P(:, 1:3));

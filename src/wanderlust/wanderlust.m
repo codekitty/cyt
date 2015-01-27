@@ -289,6 +289,8 @@ for graph_iter = 1:G.Opts.num_graphs
 
 	% run traj. landmarks
 	[ traj, dist, iter_l, RNK,paths_l2l ] = trajectory_landmarks( klnn,data, G);
+    
+    % save output variables
     G.landmarks(graph_iter, :) = iter_l;
     G.traj(graph_iter) = {traj};
     G.dist(graph_iter) = {dist};
@@ -299,56 +301,36 @@ for graph_iter = 1:G.Opts.num_graphs
     end
 
 	% calculate weighed trajectory
-	W = dist;
     if strcmpi(G.Opts.voting_scheme, 'uniform')
-        W(:, :) = 1;
+        W_full(:, :) = 1;
     elseif strcmpi(G.Opts.voting_scheme, 'exponential')
         sdv = mean ( std ( dist) )*3;
-        W = W ./ repmat( sum( W ), size( W, 1 ), 1 );
-        W = exp( -.5 * (W / sdv).^2);
+        W_full = exp( -.5 * (dist / sdv).^2);
     elseif strcmpi(G.Opts.voting_scheme, 'linear')
-        W = W ./ repmat( sum( W ), size( W, 1 ), 1 );
-        W = 1-W;
+        W_full = repmat(max(dist), size( dist, 1 ), 1) - dist;
     end
     
-    % The weghing matrix must be a stochastoc operator
-    W_orig = W ./ repmat( sum( W ), size( W, 1 ), 1 );
-    
+    % The weghing matrix must be a column stochastoc operator
+    W_full = W_full ./ repmat( sum( W_full ), size( W_full, 1 ), 1 );
+        
     if (G.Opts.branch)
-        cl = setdiff(unique(RNK)', RNK(G.Opts.s));
-        if numel(cl) == 2
-            W = W_orig;
-            W(ismember(iter_l,find(RNK==cl(1))), RNK==cl(2)) = 0;
-            W(ismember(iter_l,find(RNK==cl(2))), RNK==cl(1)) = 0;
-            W = W ./ repmat( sum( W ), size( W, 1 ), 1 );
-        else 
-            fprintf( 'warning: no branch found');
-        end
+        W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s));
+    else
+        W = W_full;
     end
     
+    % save initial solution - start point's shortest path distances
     t( 1,:)  = traj(1,:);
-
-	t( 2, : ) = sum( traj .* W );
-	a = sum(W, 1);
-    s = sum(a.*t(end, :));
-    fprintf('s: %g\n', s);
-    fprintf( 1, 'corr=');
-    if any(isnan(t(2,:)))
-            strPrompt = sprintf('there are nans in t, should I stop?');
-            str_input = input(strPrompt,'s');
-            if strcmpi(str_input, 'y') || strcmpi(str_input, 'yes') || strcmpi(str_input, 'yea')
-                data(find(traj(2, :) == inf), :)
-                return;
-            end 
-    end
+	t( end+1, : ) = sum( traj .* W );
     
 	% iteratively realign trajectory (because landmarks moved)
 	converged = 0; user_break = 0; realign_iter = 2;
-	while( ~converged && ~user_break)
+    G.v = [];
+	while  ~converged && ~user_break
 		realign_iter = realign_iter + 1;
 
 		traj = dist;
-		for idx = 1:size( dist, 1 )
+        for idx = 1:size( dist, 1 )
 			% find position of landmark in previous iteration
 			idx_val = t( realign_iter - 1, iter_l( idx ) );
 			% convert all cells before starting point to the negative
@@ -360,41 +342,32 @@ for graph_iter = 1:G.Opts.num_graphs
 
         if (G.Opts.branch)
             RNK = splittobranches(traj, traj(1, : ),data, iter_l, dist,paths_l2l, G.Opts);
-            cl = setdiff(unique(RNK)', RNK(G.Opts.s));
-            if numel(cl) == 2
-                W = W_orig;
-                W(ismember(iter_l,find(RNK==cl(1))), RNK==cl(2)) = 0;
-                W(ismember(iter_l,find(RNK==cl(2))), RNK==cl(1)) = 0;
-                W = W ./ repmat( sum( W ), size( W, 1 ), 1 );
-            else 
-                fprintf( 'warning: no branch found');
-            end
+            W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s));
         end
+       
+        G.v(end+1) = compute_energy(t(end, iter_l), dist(:, iter_l));
         
 		% calculate weighed trajectory
 		t( realign_iter, : ) = sum( traj .* W );
 
-        a = sum(W, 1);
-%         s = sum(a.*t(end, :));
-%         fprintf('s: %g\n', s);
-
 		% check for convergence
-        fprintf( 1, '%2.5f...', corr( t( realign_iter, : )', t( realign_iter - 1, : )' ));
-		converged = corr( t( realign_iter, : )', t( realign_iter - 1, : )' ) > 0.9999;
+        fpoint_corr = corr( t( realign_iter, : )', t( realign_iter - 1, : )' );
+        fprintf( 1, '%2.5f...', fpoint_corr);
+		converged = fpoint_corr > 0.9999;
         
-        if (mod(realign_iter,40)==0)
-            % !!!!temp!!!! break after too many alignments!
+        if (mod(realign_iter,100)==0)
+            % break after too many alignments - something is wrong
             user_break = true;
-            
-%             last_corr = corr( t( realign_iter, : )', t( realign_iter - 1, : )' );
-%             strPrompt = sprintf('iter=%g, corr=%g. should I stop (y\n)?', realign_iter, last_corr);
-%             str_input = input(strPrompt,'s');
-%             if strcmpi(str_input, 'y') || strcmpi(str_input, 'yes') || strcmpi(str_input, 'yea')
-%                 user_break = true;
-%             end
+            fprintf('\nWarning: Force exit after %g iterations\n', realign_iter);
         end
 	end
-	fprintf( 1, '\n%d realignment iterations, ', realign_iter );
+    
+    G.v(end+1) = compute_energy(t(end, iter_l), dist(:, iter_l));
+%     figure('Color',[1 1 1]);;
+%     plot(1:numel(G.v), G.v, '-b');
+%     plot_iterations(G.Opts.plot_data, t);
+    
+	fprintf( 1, '\n%d realignment iterations, ', realign_iter-1 );
 
 	% save final trajectory for this graph    
     G.T(graph_iter, :) = t(realign_iter, :);
@@ -410,7 +383,7 @@ for graph_iter = 1:G.Opts.num_graphs
         G.bp(graph_iter) = 0;
     end
     
-    if( G.Opts.verbose )
+	if( G.Opts.verbose )
 		toc( iter_t );
 
 		fprintf( 1, '\n' );
@@ -475,11 +448,12 @@ function spdists = spdists_klnn( spdists, k, verbose )
         % if not given landmarks list, decide on random landmarks        
         if (G.Opts.band_sample)
             n_opts = [];
+            window_size = .1;
             num_jumps_arr = cellfun(@(x)numel(x), paths);
             max_jumps = max(num_jumps_arr);
             max_dist = max(dists);
-            for prc = .998:-.10:.198
-                band = find(dists>=(prc-.1)*max_dist & dists <=prc*max_dist); % & num_jumps_arr >= floor((prc-.05)*max_jumps) & num_jumps_arr <= ceil(prc*max_jumps));
+            for prc = .998:-window_size:.08
+                band = find(dists>=(prc-window_size)*max_dist & dists <=prc*max_dist); % & num_jumps_arr >= floor((prc-.05)*max_jumps) & num_jumps_arr <= ceil(prc*max_jumps));
                 if length(band)> (n- 1 - length(G.Opts.partial_order))
                     n_opts = [n_opts randsample( band, n - 1 - length(G.Opts.partial_order), true )];
                 end
@@ -488,25 +462,6 @@ function spdists = spdists_klnn( spdists, k, verbose )
         else
             n = randsample( 1:size(data,1), n - 1 - length(G.Opts.partial_order) );
         end
-%         nw(end+1) = knnsearch(data, [-.2 -.2]);
-%         nw(end+1) = knnsearch(data, [-.18 -.16]);
-%         nw(end+1) = knnsearch(data, [.2 .5]);
-%         nw(end+1) = knnsearch(data, [.1 .15]);
-%         nw(end+1) = knnsearch(data, [.17 0]);
-%         nw(end+1) = knnsearch(data, [-.1 .5]);
-%         h=figure('Color',[1 1 1]);
-%         [~, density, d1, d2] = kde2d(data, 1024);
-%         contour(d1, d2, density, 128);
-%         colormap(jet);
-%         hold on;
-%         plot(data(nw, 1),...
-%             data(nw, 2),...
-%             'Xm', 'markersize', 12,...
-%             'linewidth',8);
-%         plot(data(nw(end), 1),...
-%             data(nw(end), 2),...
-%             'Xm', 'markersize', 12,...
-%             'linewidth',8);
         
         % flock landmarks 
         if (G.Opts.flock_landmarks > 0)
@@ -817,4 +772,67 @@ function plot_landmark_paths(data, paths, l)
         end
     end
     drawnow;
+end
+
+function W=muteCrossBranchVoting(W, RNK, trunk_id)
+    % grab branch cluster labels
+    branch_ids = setdiff(unique(RNK)', trunk_id);
+
+    % if we have indeed 2 branches
+    if numel(branch_ids) == 2
+
+        % mute voting weight between one branch to the other
+        W(ismember(iter_l,find(RNK==branch_ids(1))), RNK==branch_ids(2)) = 0;
+        W(ismember(iter_l,find(RNK==branch_ids(2))), RNK==branch_ids(1)) = 0;
+
+        % make W column stochastic (weighted average per landmark)
+        W = W ./ repmat( sum( W ), size( W, 1 ), 1 );
+
+    % otherwise, print warning
+    else 
+        fprintf( 'warning: no branch found');
+    end
+end
+
+function v=compute_energy(tau, D)
+        n = numel(tau);
+        sdv = mean ( std ( D) )*3;
+        E = exp( -.5 * (D / sdv).^2);
+        L = E-diag(sum(E, 1));
+        
+        % compute error
+        v = 0;
+        for i=1:n
+            for j=1:n
+                v = v - L(i,j)*((tau(i)-tau(j))^2);
+            end
+        end
+        
+        for i=1:n
+            for j=1:n
+                v = v + E(i,j)*(abs(tau(i)-tau(j)))*D(i,j);
+            end
+        end
+        
+        % assert sum is constant
+        lambda = sum(E, 1);
+        s = sum(lambda.*tau);        
+        
+%         fprintf('\nV = %g\n S = %g\n',v, s);
+end
+
+function plot_iterations(data, t)
+    for iter=1:size(t, 1)
+        % new white background figure
+        figure('Color',[1 1 1]);
+        
+        % scatter the data with solution on top
+        scatter(data(:,1),data(:,2), 35, t(iter,:), '.'); 
+        
+        % make it look nice
+        title(sprintf('iteration: %g', iter));
+        colormap jet;
+        box on;
+        set(gca,'xtick',[],'ytick',[]);
+    end
 end
