@@ -611,7 +611,7 @@ function lstGates_Callback(~, ~, ~)
     setChannelNamesToAxis(handles.pupDensYAxis, channel_names);
     setChannelNamesToAxis(handles.pupZAxis, [' ' channel_names(:)']);
     setChannelNamesToAxis(handles.pupColorBy,['Gates' channel_names(:)']);
-
+    
     
     % show\hide option to plot difference of channels (TODO move this somewhere
     % else!!)
@@ -629,6 +629,7 @@ function lstGates_Callback(~, ~, ~)
     put('gateContext', gate_indices);
     
     setStatus(sprintf('%g data points in the gates selected', numel(gate_indices)));
+    filterDiscreteChannels(channel_names);
 end
 
 function setChannelNamesToAxis(pupObject, channel_names)
@@ -3298,7 +3299,6 @@ function btnCluster_Callback(hObject, ~, ~)
         pos = get(handles.lstChannels, 'Position');
         pos(3) = pos(3)/2.2;
         set(handles.lstChannels, 'Position', pos);
-  
         set(handles.lstCluChannels, 'Visible', 'on');
     else
     	% Toggle button is not pressed-take appropriate action
@@ -3313,6 +3313,23 @@ function btnCluster_Callback(hObject, ~, ~)
     end
     
     lstChannels_Callback;
+end
+
+%find Discrete channels in the channels list and the copy to cluster channel list
+function filterDiscreteChannels(channel_names)
+    handles = gethand;
+    channel_index=[];
+    cluster_channels=[];
+    for i=1:length(channel_names)
+        if isDiscrete(i)
+            channel_index=i;
+            cluster_channels=channel_names(i);
+        end
+    end
+    
+    setChannelNamesToAxis(handles.lstCluChannels, cluster_channels);
+    put('current_cluster_channels', channel_index);
+    
 end
 
 
