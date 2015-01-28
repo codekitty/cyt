@@ -1187,6 +1187,131 @@ function plot_cluster_heat_map
 end
 
 function plot_cluster_tsne
+    handles = gethand; 
+
+    % clear the figure panel
+    cla;
+    colormap jet;
+    legend('off');
+    colorbar('delete');
+    axis auto;
+        
+    % show controls
+    if ~isCtrlPressed
+        set(handles.pnlMetaClusterControls, 'Visible', 'on');
+    end
+
+	hPlot = subplot(1,1,1,'Parent',handles.pnlPlotFigure);
+    box on;
+
+    session_data = retr('sessionData'); % all data
+    gates        = retr('gates');
+    gate_context = retr('gateContext'); % indices currently selected
+    if isempty(gate_context)
+        return;
+    end
+    
+    selected_channels = get(handles.lstChannels, 'Value');
+    channel_names     = retr('channelNames');
+    selected_gates    = get(handles.lstGates, 'Value');
+    gate_names        = gates(selected_gates, 1);
+    
+    initClusterSelection = size(session_data, 2);
+    
+    %find meta cluster channel
+    cluster_channel      = retr('current_cluster_channels');
+    
+    %find cluster channel
+    cluster_channel      = retr('current_cluster_channels');
+        
+    %finding indeces of selected samples (currently assuming that no overlap occures between indeces)
+    inds = {};
+    
+    for i=1:length(selected_gates),
+        inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
+    end
+    
+    %finding cluster centroids and mapping between clusters and meta clusters
+    meta_cluster_channel = session_data(gate_context, cluster_channel);
+    [centroids, cluster_mapping] = get_centroids(session_data(gate_context, selected_channels), inds, session_data(gate_context, cluster_channel), meta_cluster_channel); 
+    
+    
+    if ~isCtrlPressed
+        set(handles.pnlMetaTsneColor, 'Visible', 'on');
+    end
+
+    %testing that no centroids are NaN (can happen if subsample does
+    %not contain any cells from a specific cluster)
+    unique_meta_clusters = unique(cluster_mapping(:,1));
+    cluster_mapping(isnan(centroids(:,1)),:) = [];    %removing rows that correspond to clusters where centroid is NaN
+
+    %testing if any meta clusters get dropped (can happen eg happen if meta cluster only contains one cluster and this contains NaN in centroids
+    if (length(unique_meta_clusters) ~= length(unique(cluster_mapping(:,1)))),
+        fprintf('\nA meta cluster is not plotted becaus no cells in selected gates belong to this meta cluster\n\n');
+    end
+
+    centroids(isnan(centroids(:,1)),:) = [];  %removing rows with NaNs in centroids
+
+    dot_size = 500/max(cluster_mapping(:,5)) * cluster_mapping(:,5)+5;  %rescaling size so they make sense size wise
+
+    %finding previous tSNE or calculating tSNE
+    tSNE_out = []; %retr('tsneParams');
+    if (isempty(tSNE_out)),
+        if (size(centroids, 1) > 10)
+            tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
+        else
+            tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
+        end
+    end
+    %put('tsneParams', tSNE_out);
+
+    %finding color channel
+    color_chan = get(handles.lstTsneColorBy,'Value');        
+    color_chan = color_chan-1;
+    %testing if color_chan is discrete (= maybe cluster channel) or continous (maybe marker channel)
+    %if isDiscrete(color_chan) && length(unique(session_data(gate_context, color_chan))) < 500,
+    if (color_chan<0)
+        return;
+    elseif color_chan ==0 % color by gate         
+        tsne_col = cluster_mapping(:,3);
+        % matColors = distinguishable_colors(p);
+        %colormap(matColors);
+        colormap('Lines');
+        scatter(tSNE_out(:,1), tSNE_out(:,2), (dot_size+31)*1, tsne_col,'fill'); %plotting
+%             legend(gate_names);
+    elseif color_chan == cluster_channel,
+        tsne_col = cluster_mapping(:,1);
+        scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size); %plotting
+    else    
+        %finding marker means for marker selected
+        inds = {};
+
+        for i=1:length(selected_gates),
+            inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
+        end
+
+        tsne_col = zeros(size(centroids,1),1);
+        for i=1:size(centroids,1),
+            sub_data = session_data(inds{cluster_mapping(i,3)},:);
+            tsne_col(i) = mean(sub_data(sub_data(:,cluster_channel) == cluster_mapping(i,4), color_chan));
+            %tsne_col(cluster_mapping(:,1) == i) = median(session_data(session_data(gate_context,cluster_channel) == i,color_chan));
+        end
+
+        %making 0.95 quantile most red color and 0.05 quantile most blue color to compensate for outliers
+        tsne_col(tsne_col < quantile(tsne_col, 0.05)) = quantile(tsne_col,0.05);
+        tsne_col(tsne_col > quantile(tsne_col, 0.95)) = quantile(tsne_col, 0.95);
+
+        scatter(tSNE_out(:,1),tSNE_out(:,2), dot_size, tsne_col, 'fill');
+        colorbar;
+
+    end
+
+    xlabel('tSNE1');
+    ylabel('tSNE2');
+
+    %tSNE_out = fast_tsne(centroids, 50, 10);
+    %tSNE_plot(tSNE_out, 'metaclusters',meta_cluster_list, out_dir, dot_size);
+    %scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), color_variable, dot_size)
 
 end
 
