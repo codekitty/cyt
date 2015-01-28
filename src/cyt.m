@@ -1278,7 +1278,8 @@ function plot_cluster_tsne
         %colormap(matColors);
         colormap('Lines');
         scatter(tSNE_out(:,1), tSNE_out(:,2), (dot_size+31)*1, tsne_col,'fill'); %plotting
-%             legend(gate_names);
+        legend(gate_names);
+       % legend(gate_names,'Location','northoutside','Orientation','horizontal');
     elseif color_chan == cluster_channel,
         tsne_col = cluster_mapping(:,1);
         scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size); %plotting
