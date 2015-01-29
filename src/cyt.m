@@ -3600,6 +3600,8 @@ function filterDiscreteChannels(channel_names)
     end
     
     setChannelNamesToAxis(handles.lstCluChannels, cluster_channels);
+    value = max(1, get(handles.lstCluChannels,'Value'));
+    set(handles.lstCluChannels,'Value', min(value, numel(cluster_channels)));
     put('current_cluster_channels', channel_index);
     
 end
