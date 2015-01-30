@@ -139,6 +139,13 @@ else
         lnn= GD.T;
     else
     if (isempty(G.Opts.lnn))
+        % Check for cached
+        [curr_path, ~, ~] = fileparts(mfilename('fullpath'));
+         curr_path = [curr_path filesep];  
+
+        %checking for old tsne results for the same data
+        fileCheck = exist ([curr_path 'cacheknnResults.mat'], 'file');
+
         lnn = parfor_spdists_knngraph( data, G.Opts.l,...
             'distance', G.Opts.metric,...
             'chunk_size', 500,... % TODO: parameterize and add opt for ppl without PC toolbox
@@ -314,7 +321,7 @@ for graph_iter = 1:G.Opts.num_graphs
     W_full = W_full ./ repmat( sum( W_full ), size( W_full, 1 ), 1 );
         
     if (G.Opts.branch)
-        W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s));
+        W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s), iter_l);
     else
         W = W_full;
     end
@@ -342,7 +349,7 @@ for graph_iter = 1:G.Opts.num_graphs
 
         if (G.Opts.branch)
             RNK = splittobranches(traj, traj(1, : ),data, iter_l, dist,paths_l2l, G.Opts);
-            W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s));
+            W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s), iter_l);
         end
        
         G.v(end+1) = compute_energy(t(end, iter_l), dist(:, iter_l));
@@ -626,18 +633,24 @@ function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist,
     diffdists = .5*(diffdists'+diffdists);
     c = segmentlikemichealjordanwould(diffdists, landmark_clusters, Opts.end_clusters);
     
-    % show wine glass with clusterization
-    % [evec2, ~] = eig(diffdists);
-    % evec2 = evec2(:, 2);
-    % [~, idx] = sort(evec2);
-%     figure('Color',[1 1 1]);
-%     scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c(idx));
-%     figure('Color',[1 1 1]);
-%     subplot(1,2,1);
-%     imagesc(diffdists(idx,idx));
-%     subplot(1,2,2);
-%     [~, idx_time] = sort(t(landmarks));
-%     imagesc(diffdists(idx_time,idx_time));
+%     show wine glass with clusterization
+    [evec2, ~] = eig(diffdists);
+    evec2 = evec2(:, 2);
+    [~, idx] = sort(evec2);
+    figure('Color',[1 1 1]);
+    scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c(idx));
+    
+    % show Q sorted by second eig vector, 
+    figure('Color',[1 1 1]);
+    subplot(1,2,1);
+    imagesc(diffdists(idx,idx));
+    
+    % show Q sorted by tau, 
+    subplot(1,2,2);
+    [~, idx_time] = sort(t(landmarks));
+    imagesc(diffdists(idx_time,idx_time));
+    
+    
     
     % to pinpoint branch - look into the min (traj) of the paths from one cluster to the
     % other
@@ -671,11 +684,11 @@ function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist,
     end
     
     % reassign to clusters based on branch point
-    pb = prctile(fork_p, 50);
+    pb = prctile(fork_p, 80);
     c_new = c;
     [~,I] = min(abs(dist(1:numel(landmarks), :)));
     RNK = c_new(I);
-    % c_new(t(landmarks)' <= pb) = c(1);
+    c_new(t(landmarks)' <= pb) = c(1);
     % c_new(evec2<0 & t(landmarks)' >= pb) = c_branch(1);
     % c_new(evec2>0 & t(landmarks)' >= pb) = c_branch(2);
     reassign_landmarks = find(t(landmarks)' > pb & c_new == trunk);
@@ -691,16 +704,32 @@ function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist,
         figure('Color',[1 1 1]);
         subplot(1,2,1);
         
-        scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c(idx));
+        scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c_new(idx));
         title(sprintf('Problems: BP=%g', pb));
         
         subplot(1,2,2);
         scatter(Opts.plot_data(:,1),Opts.plot_data(:,2),...
-            ones(size(data,1),1)*10, ones(size(data,1),1)); 
+            ones(size(data,1),1)*10, ones(size(data,1),1), '.b'); 
         hold on;
-        scatter(Opts.plot_data(landmarks,1),Opts.plot_data(landmarks,2),...
-            ones(numel(landmarks),1)*50, (c+1)*5);
         
+        scatter(Opts.plot_data(landmarks(c_new==1),1),Opts.plot_data(landmarks(c_new==1),2),...
+            ones(numel(landmarks(c_new==1)),1)*50, (c_new(c_new==1)+1)*5, 'ok');
+        scatter(Opts.plot_data(landmarks(c_new==2),1),Opts.plot_data(landmarks(c_new==2),2),...
+            ones(numel(landmarks(c_new==2)),1)*50, (c_new(c_new==2)+1)*5, 'or');
+        scatter(Opts.plot_data(landmarks(c_new==3),1),Opts.plot_data(landmarks(c_new==3),2),...
+            ones(numel(landmarks(c_new==3)),1)*50, (c_new(c_new==3)+1)*5, 'og');
+        
+        % show Q sorted by second eig vector, 
+        figure('Color',[1 1 1]);
+        subplot(1,2,1);
+        imagesc(diffdists(idx,idx));
+        set(gca,'xtick',[],'ytick',[])
+
+        % show Q sorted by tau, 
+        subplot(1,2,2);
+        [~, idx_time] = sort(t(landmarks));
+        imagesc(diffdists(idx_time,idx_time));
+
     end
         
 %     figure('Color',[1 1 1]);
@@ -774,7 +803,7 @@ function plot_landmark_paths(data, paths, l)
     drawnow;
 end
 
-function W=muteCrossBranchVoting(W, RNK, trunk_id)
+function W=muteCrossBranchVoting(W, RNK, trunk_id, landmarks)
     % grab branch cluster labels
     branch_ids = setdiff(unique(RNK)', trunk_id);
 
@@ -782,8 +811,8 @@ function W=muteCrossBranchVoting(W, RNK, trunk_id)
     if numel(branch_ids) == 2
 
         % mute voting weight between one branch to the other
-        W(ismember(iter_l,find(RNK==branch_ids(1))), RNK==branch_ids(2)) = 0;
-        W(ismember(iter_l,find(RNK==branch_ids(2))), RNK==branch_ids(1)) = 0;
+        W(ismember(landmarks,find(RNK==branch_ids(1))), RNK==branch_ids(2)) = 0;
+        W(ismember(landmarks,find(RNK==branch_ids(2))), RNK==branch_ids(1)) = 0;
 
         % make W column stochastic (weighted average per landmark)
         W = W ./ repmat( sum( W ), size( W, 1 ), 1 );

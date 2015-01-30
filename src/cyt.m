@@ -986,10 +986,10 @@ function plot_along_time(time_channel)
         arrWonderlust = arrWonderlust./prctile(arrWonderlust, 95);
         arrWonderlust(arrWonderlust>1) = 1;
     end
-    branch = true;
+    branch = strcmpi(channel_names{time_channel+1}, 'branch');
     if (branch)
     plot_as_function(arrWonderlust, matData, ...
-                    'num_locs', 500,...
+                    'num_locs', 100,...
                     'avg_type', avg_type,...
                     'show_error', show_error,...
                     'labels', channel_names(selected_channels),...
@@ -2847,7 +2847,7 @@ function runWanderlust
         end
         params.plot_data = sessionData(gate_context, s);
     end
-
+    
     % save recent wanderlust options
     put('wanderlustParams', params);
 
@@ -2916,11 +2916,14 @@ function runWanderlust
         
         % run wanderlust
 %         load('latest_lands.mat');
-%         params.num_landmarks = latest_lands(2:end);
+%         params.num_landmarks = randsample(1:numel(gate_context), params.num_landmarks);
+%         params.num_landmarks = [params.num_landmarks find(ismember(gate_context,gates{end-1, 2}))];
+%         params.num_landmarks = [params.num_landmarks find(ismember(gate_context,gates{end, 2}))];
+
         params.search_connected_components = false;
         G = wanderlust(data,params);
-        latest_lands = G.landmarks;
-        save('latest_lands.mat', 'latest_lands');
+%         latest_lands = G.landmarks;
+%         save('latest_lands.mat', 'latest_lands');
              
         % save results
         if(params.branch)
