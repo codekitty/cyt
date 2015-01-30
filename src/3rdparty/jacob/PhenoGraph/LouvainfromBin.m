@@ -1,14 +1,16 @@
 function [c,Q,bestpartition] = LouvainfromBin( filename, numiters )
+ %the path to louvain in each cyt
 [curr_path, ~, ~] = fileparts(mfilename('fullpath'));
 curr_path = [curr_path filesep];
 ps = [curr_path 'Louvain' filesep];
+
 if isempty(ps)
     error('Please enter the path to Louvain C++ code')
 end
 filename = strrep( filename, '.bin', '' );
 % begin
 fprintf(1, 'MATLAB: calling convert:\n');
-command = [ps 'convert -i ' filename '.bin -o ' filename '_graph.bin -w ' filename '_graph.weights' ];
+command = [ps '/convert -i ' filename '.bin -o ' filename '_graph.bin -w ' filename '_graph.weights' ];
 fprintf(1,'%s\n', command );
 system( command );
 % run community detection
