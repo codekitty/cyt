@@ -64,86 +64,90 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
     curr_path = [curr_path filesep];
     
     cd(curr_path);
-    
-    %checking for old tsne results for the same data
-    
-    fileCheck= exist ('tsneResults.mat', 'file');
-    
-    if (fileCheck==0) %no file
-        mapMat = containers.Map(); % hash map for matrix name and tsne output
-        hashMat= DataHash(X); %getting the  matrix hash
-    else
-        file= load('tsneResults.mat'); %loading the old tsne results
-        mapMat=file.mapMat;
-        
-        hashMat= DataHash(X); %getting the  matrix hash
-        check = isKey(mapMat,hashMat); %check for key in the hash map
-    
-        if (check==1) %no need to run tsne again->returning old result
-            value=values(mapMat,{hashMat});
-            mappedX=value{1};
-            return;  
-        end
-    end
- 
-    
-    % Perform the initial dimensionality reduction using PCA
-    X = double(X);
-    X = bsxfun(@minus, X, mean(X, 1));
-    covX = X' * X;
-    [M, lambda] = eig(covX);
-    [~, ind] = sort(diag(lambda), 'descend');
-    if initial_dims > size(M, 2)
-        initial_dims = size(M, 2);
-    end
-	M = M(:,ind(1:initial_dims));
-    X = X * M;
-    clear covX M lambda
-    
-    % Run the fast diffusion SNE implementation
-    write_data(X, theta, perplexity);
-    bh_tsne='';
-    %Comment the two lines following this comment and the 
-    %corresponding if...else statements if you dont wanna use the 
-    %64 bit versions in case they are giving you trouble.
-    %In both windows and linux the 64 bit version is abt 2 seconds
-    %faster than the corresponding 32 bit version for 6000 datapoints
-    
-    arch_str=computer('arch');
-    arch=arch_str(length(arch_str)-1:length(arch_str));
-    if ismac==1
-        bh_tsne='bh_tsne_mac64';
-    elseif isunix==1
-        if str2double(arch)==64
-            bh_tsne='bh_tsne_linux64';
+    try
+        %checking for old tsne results for the same data
+
+        fileCheck= exist ('tsneResults.mat', 'file');
+
+        if (fileCheck==0) %no file
+            mapMat = containers.Map(); % hash map for matrix name and tsne output
+            hashMat= DataHash(X); %getting the  matrix hash
         else
-            bh_tsne='bh_tsne_linux32';
+            file= load('tsneResults.mat'); %loading the old tsne results
+            mapMat=file.mapMat;
+
+            hashMat= DataHash(X); %getting the  matrix hash
+            check = isKey(mapMat,hashMat); %check for key in the hash map
+
+            if (check==1) %no need to run tsne again->returning old result
+                value=values(mapMat,{hashMat});
+                mappedX=value{1};
+                cd(work_dir);
+                return;  
+            end
         end
-    elseif ispc==1
-        if str2double(arch)==64
-            bh_tsne='bh_tsne_win64';
-        else        
-            bh_tsne='bh_tsne_win32';
+
+
+        % Perform the initial dimensionality reduction using PCA
+        X = double(X);
+        X = bsxfun(@minus, X, mean(X, 1));
+        covX = X' * X;
+        [M, lambda] = eig(covX);
+        [~, ind] = sort(diag(lambda), 'descend');
+        if initial_dims > size(M, 2)
+            initial_dims = size(M, 2);
         end
+        M = M(:,ind(1:initial_dims));
+        X = X * M;
+        clear covX M lambda
+
+        % Run the fast diffusion SNE implementation
+        write_data(X, theta, perplexity);
+        bh_tsne='';
+        %Comment the two lines following this comment and the 
+        %corresponding if...else statements if you dont wanna use the 
+        %64 bit versions in case they are giving you trouble.
+        %In both windows and linux the 64 bit version is abt 2 seconds
+        %faster than the corresponding 32 bit version for 6000 datapoints
+
+        arch_str=computer('arch');
+        arch=arch_str(length(arch_str)-1:length(arch_str));
+        if ismac==1
+            bh_tsne='bh_tsne_mac64';
+        elseif isunix==1
+            if str2double(arch)==64
+                bh_tsne='bh_tsne_linux64';
+            else
+                bh_tsne='bh_tsne_linux32';
+            end
+        elseif ispc==1
+            if str2double(arch)==64
+                bh_tsne='bh_tsne_win64';
+            else        
+                bh_tsne='bh_tsne_win32';
+            end
+        end
+        tic, system([curr_path bh_tsne]); 
+        toc
+        [mappedX, landmarks, costs] = read_data;   
+        landmarks = landmarks + 1;              % correct for Matlab indexing
+        delete('data.dat');
+        delete('result.dat');
+
+        % while the hash map is too big removing the first element
+        if length(mapMat)>20 
+            lstKeys= keys(mapMat); 
+            remove(mapMat,lstKeys(1));
+        end
+
+        mapMat(hashMat)=mappedX; %adding the name and tsne result to hashmap
+
+        save('tsneResults.mat','mapMat'); %saving into file
+        cd(work_dir);
+    catch ME
+        cd(work_dir);
+        rethrow(ME);
     end
-    tic, system([curr_path bh_tsne]); 
-    toc
-    [mappedX, landmarks, costs] = read_data;   
-    landmarks = landmarks + 1;              % correct for Matlab indexing
-    delete('data.dat');
-    delete('result.dat');
-    
-    % while the hash map is too big removing the first element
-    if length(mapMat)>20 
-        lstKeys= keys(mapMat); 
-        remove(mapMat,lstKeys(1));
-    end
-    
-    mapMat(hashMat)=mappedX; %adding the name and tsne result to hashmap
-    
-    save('tsneResults.mat','mapMat'); %saving into file
-    
-    cd(work_dir);
 end
 
 
