@@ -435,8 +435,8 @@ function OpenMenuItem_Callback(~, ~, ~)
             [~, fcsname, ~] = fileparts(files{i}); 
             gates{last_gate_ind+i, 1} = char(fcsname);
             gates{last_gate_ind+i, 2} = currInd+1:currInd+size(fcsdats{i},1);
-%            gates{last_gate_ind+i, 3} = cdatas{i}.channel_name_map;        
-             gates{last_gate_ind+i, 3} = get_channelnames_from_header(fcshdrs{i});        
+%           gates{last_gate_ind+i, 3} = cdatas{i}.channel_name_map;        
+            gates{last_gate_ind+i, 3} = get_channelnames_from_header(fcshdrs{i});        
             gates{last_gate_ind+i, 4} = files{i}; % opt cell column to hold filename
 
             waitbar(i-1/nfcs, hWaitbar, sprintf('Adding %s data to session  ...', gates{last_gate_ind+i, 1}));
@@ -702,6 +702,7 @@ function plotChannels_Callback(~, ~, handles)
     % disable gating functionality
     set(handles.btnGatePoly, 'Enable', 'off');
     set(handles.btnGateRect, 'Enable', 'off');
+    set(handles.btnPickCluster, 'Enable', 'off');
     
     % find selected plot type request
     selectedGates = get(handles.lstGates,'Value');
@@ -1229,14 +1230,12 @@ function plot_cluster_tsne
     channel_names     = retr('channelNames');
     selected_gates    = get(handles.lstGates, 'Value');
     gate_names        = gates(selected_gates, 1);
-    
-    initClusterSelection = size(session_data, 2);
-    
-    %find meta cluster channel
-    cluster_channel      = retr('current_cluster_channels');
+        
+    selected_list_cluster      = get(handles.lstCluChannels, 'value');
     
     %find cluster channel
-    cluster_channel      = retr('current_cluster_channels');
+    cluster_channels      = retr('current_cluster_channels');
+    cluster_channel = cluster_channels(selected_list_cluster);
         
     %finding indeces of selected samples (currently assuming that no overlap occures between indeces)
     inds = {};
@@ -1247,7 +1246,8 @@ function plot_cluster_tsne
     
     %finding cluster centroids and mapping between clusters and meta clusters
     meta_cluster_channel = session_data(gate_context, cluster_channel);
-    [centroids, cluster_mapping] = get_centroids(session_data(gate_context, selected_channels), inds, session_data(gate_context, cluster_channel), meta_cluster_channel); 
+    [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = getOldData(session_data(gate_context, selected_channels), inds, ...
+        session_data(gate_context, cluster_channel), meta_cluster_channel); 
     
     
     if ~isCtrlPressed
@@ -1288,16 +1288,20 @@ function plot_cluster_tsne
         return;
     elseif color_chan ==0 % color by gate         
         tsne_col = cluster_mapping(:,3);
-        % matColors = distinguishable_colors(p);
-        %colormap(matColors);
-        colormap('Lines');
-        scatter(tSNE_out(:,1), tSNE_out(:,2), (dot_size+31)*1, tsne_col,'fill'); %plotting
-        legend(gate_names);
+        scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, (dot_size+31)); %plotting
+        legend(gate_names, 'Interpreter', 'none');
        % legend(gate_names,'Location','northoutside','Orientation','horizontal');
     elseif color_chan == cluster_channel,
         tsne_col = cluster_mapping(:,1);
         scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size); %plotting
-    else    
+        groups = unique(tsne_col);
+        legend(cellfun(@num2str, num2cell(groups), 'UniformOutput', false), 'Interpreter', 'none');
+    else
+        if isDiscrete(color_chan)
+            errordlg('TODO (Lior): implement scatter_by_point here for discrete channels','Wrong Input');
+            return;
+        end
+        
         %finding marker means for marker selected
         inds = {};
 
@@ -1315,7 +1319,7 @@ function plot_cluster_tsne
         %making 0.95 quantile most red color and 0.05 quantile most blue color to compensate for outliers
         tsne_col(tsne_col < quantile(tsne_col, 0.05)) = quantile(tsne_col,0.05);
         tsne_col(tsne_col > quantile(tsne_col, 0.95)) = quantile(tsne_col, 0.95);
-
+        colormap(jet(40));
         scatter(tSNE_out(:,1),tSNE_out(:,2), dot_size, tsne_col, 'fill');
         colorbar;
 
@@ -1323,12 +1327,48 @@ function plot_cluster_tsne
 
     xlabel('tSNE1');
     ylabel('tSNE2');
-
+    
+    %legend(strread(num2str(1:size(unique(selected_gates),1)),'%s'),'location','eastoutside');
+    %legend(horzcat(num2str(unique(selected_gates)),'%s'),'location','eastoutside');
     %tSNE_out = fast_tsne(centroids, 50, 10);
     %tSNE_plot(tSNE_out, 'metaclusters',meta_cluster_list, out_dir, dot_size);
     %scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), color_variable, dot_size)
-
+    %set(handles.btnPickCluster, 'Enable', 'on');
+    dcm_obj = datacursormode(gcf);
+    set(dcm_obj,'UpdateFcn',{@myupdatefcn,tSNE_out,cluster_sizes,cellsInCluster,cluster_mapping(:,3)});
+    %set(dcm_obj,'UpdateFcn',{@myupdatefcn});
 end
+
+function output_txt = myupdatefcn(obj,event_obj,tSNEmap,percent,cellsInCluster,cluster2gate)
+%function output_txt = myupdatefcn(obj,event_obj)
+    % Display information about the choosen cluster
+    % obj          Currently not used (empty)
+    % event_obj    Handle to event object
+    handles = gethand; 
+    session_data  = retr('sessionData');
+    gate_context      = retr('gateContext');
+    gates             = retr('gates');
+    selected_channels = retr('selectedChannels');
+    selected_gates    = get(handles.lstGates, 'Value');
+    gate_names        = get(handles.lstGates, 'String');
+    
+    
+    
+    pos = get(event_obj,'Position');
+    index = find(ismember(tSNEmap,pos,'rows'));
+%     targetind2 = find(ismember([event_obj.Target.XData(:) event_obj.Target.YData(:)],pos,'rows'));
+%     event_obj.Target.CData(targetind2);
+%     cluster2gate(targetind2);
+    %output_txt = {['Index ' num2str(index)],['Cluster Size: ' num2str(cellsInCluster),' cells (',num2str(percent*100,'%2.2f') '%)']};
+    output_txt = {sprintf('Gate: %s', gate_names{selected_gates(cluster2gate(index))}),...
+                  [sprintf('Cluster Size: %g cells (%2.2f', cellsInCluster(index), percent(index)*100) '%)']};
+    %drawing circle around the obj
+    %hold on;
+    %scatter(pos(:,1), pos(:,2), (dot_size(index)+31)*1, 'MarkerEdgeColor',[0 0 0],'LineWidth',3); %plotting
+end
+
+
+
 
 function plot_sample_clusters(cluster_channel)
     handles = gethand; 
@@ -3540,6 +3580,7 @@ function btnGate_ClickedCallback(~, ~, ~, isPoly)
     
     set(handles.btnGatePoly, 'Enable', 'off');
     set(handles.btnGateRect, 'Enable', 'off');
+    set(handles.btnPickCluster, 'Enable', 'off');
     
     sessionData  = retr('sessionData');
     gateContext   = retr('gateContext');
@@ -5887,4 +5928,3 @@ mi = zeros(1, 111);
     %         close(h);
     %      end
 end
-

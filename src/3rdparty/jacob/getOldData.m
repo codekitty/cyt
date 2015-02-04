@@ -1,4 +1,4 @@
-function [centroids, cluster_mapping] = get_centroids(data, inds, cluster_channel, meta_channel)
+function [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = getOldData(data, inds, cluster_channel, meta_channel)
 
 
     cluster_mapping = [];
@@ -13,17 +13,19 @@ function [centroids, cluster_mapping] = get_centroids(data, inds, cluster_channe
         for j=1:length(unique_clusters), %looping through clusters in gate/sample
             sub_data = data(inds{i},:); %getting the cells of the choosen gates
             centroids(end+1,:) = mean(sub_data(cluster_channel(inds{i}) == unique_clusters(j),:));
-            cluster_sizes(k) = size(data(cluster_channel(inds{i}) == unique_clusters(j),:),1) / size(cluster_channel(inds{i}),1);
+            cellsInCluster(k) = size(data(cluster_channel(inds{i}) == unique_clusters(j),:),1);
+            cluster_sizes(k) = cellsInCluster(k)/ size(cluster_channel(inds{i}),1);
+            %cluster_sizes(k) = size(data(cluster_channel(inds{i}) == unique_clusters(j),:),1) / size(cluster_channel(inds{i}),1);
             k=k+1;
         end
     end
     
-    %col1 = cluster number, col2=sample number, col3=withing sample cluster number
-    cluster_mapping = horzcat(linspace(1,size(cluster_mapping,1),size(cluster_mapping,1))', cluster_mapping, cluster_sizes');   
+    cluster_mapping = horzcat(linspace(1,size(cluster_mapping,1),size(cluster_mapping,1))', cluster_mapping, cluster_sizes');   %col1 = cluster number, col2=sample number, col3=withing sample cluster number
+    
     
     % mapping between clusters and meta clusters
     meta_clusters = [];
-        
+    
     for i=1:size(inds,2), %looping through samples
         unique_clusters = unique(cluster_channel(inds{i}));
         meta = meta_channel(inds{i});
