@@ -76,6 +76,7 @@ G.Opts.landmarks = [];
 G.Opts.disallow = [];
 G.Opts.cell_clusters = [];
 G.Opts.end_clusters = [];
+G.Opts.plot_debug_branch = true;
 
 rng('shuffle');
 
@@ -124,7 +125,7 @@ else
         disp 'building lNN graph';
     end
 
-    tic
+    tic;
     if false % tmp todo compute using the diffusion map code
         GraphDiffOpts = struct( ...
             'Normalization','smarkov', ...
@@ -138,23 +139,63 @@ else
         GD = GraphDiffusion(data', 0, GraphDiffOpts);  
         lnn= GD.T;
     else
-    if (isempty(G.Opts.lnn))
-        % Check for cached
-        [curr_path, ~, ~] = fileparts(mfilename('fullpath'));
-         curr_path = [curr_path filesep];  
+        
+        if (isempty(G.Opts.lnn))
 
-        %checking for old tsne results for the same data
-        fileCheck = exist ([curr_path 'cacheknnResults.mat'], 'file');
+            % hash map for data+metric+l -> lnn
+            hashMat = DataHash(data); 
+            hashVal = DataHash(string2hash([G.Opts.metric hashMat]) + G.Opts.l);
 
-        lnn = parfor_spdists_knngraph( data, G.Opts.l,...
-            'distance', G.Opts.metric,...
-            'chunk_size', 500,... % TODO: parameterize and add opt for ppl without PC toolbox
-            'verbose', G.Opts.verbose );
-    else
-        lnn = G.Opts.lnn;
+            % Check for cached
+            [curr_path, ~, ~] = fileparts(mfilename('fullpath'));
+            curr_path = [curr_path filesep];
+            cachefilename = [curr_path 'cacheknnResults.mat'];
+
+            %checking for old lnn results for the same data
+            fileCheck = exist (cachefilename, 'file');
+
+            % if no file
+            if (fileCheck==0) 
+                % create new hash map
+                mapMat = containers.Map(); 
+            else
+                % loading the old lnn results
+                file= load(cachefilename); 
+                mapMat=file.mapMat;
+            end
+
+            % check for key in the hash map
+            check = isKey(mapMat,hashVal); 
+
+            % if lnn found in cache
+            if (check==1) 
+                % no need to run lnn again->returning old result
+                value=values(mapMat,{hashVal});
+                lnn=value{1};
+                fprintf('lnn loaded from cache: %gs\n', toc);
+            else
+                lnn = parfor_spdists_knngraph( data, G.Opts.l,...
+                    'distance', G.Opts.metric,...
+                    'chunk_size', 1000,... % TODO: parameterize and add opt for ppl without PC toolbox
+                    'verbose', G.Opts.verbose );
+                fprintf('lnn computed: %gs\n', toc);
+                
+                % while the hash map is too big removing the first element
+                while length(mapMat)>5 
+                    lstKeys= keys(mapMat); 
+                    remove(mapMat,lstKeys(1));
+                end
+
+                % adding the name and lnn result to hashmap
+                mapMat(hashVal)=lnn; 
+
+                % saving into file
+                save(cachefilename,'mapMat');
+            end
+        else
+            lnn = G.Opts.lnn;
+        end
     end
-    end
-    sprintf('lnn computed: %gs', toc);
     
     if (G.Opts.deblur)
         [i, j, s] = find(lnn);
@@ -272,6 +313,7 @@ for graph_iter = 1:G.Opts.num_graphs
         klnn = lnn;
     end
     
+    G.Opts.exclude_points = [];
     G.Opts.minimum_incoming = 1;
     if G.Opts.minimum_incoming > 0 
        [i,j, s] = find(klnn);
@@ -281,6 +323,12 @@ for graph_iter = 1:G.Opts.num_graphs
         j_new = j(~ismember(j, inds));
         s_new = s(~ismember(j, inds));
         klnn = sparse(i_new, j_new, s_new);
+        
+        if (length(G.Opts.num_landmarks) > 1) 
+            G.Opts.num_landmarks = setdiff(G.Opts.num_landmarks, inds);
+        end
+        
+        G.Opts.exclude_points = inds;
         % TODO if G.Opts.minimum_incoming>1 then we need to remove also the
         % outgoing edges
     end
@@ -315,6 +363,9 @@ for graph_iter = 1:G.Opts.num_graphs
         W_full = exp( -.5 * (dist / sdv).^2);
     elseif strcmpi(G.Opts.voting_scheme, 'linear')
         W_full = repmat(max(dist), size( dist, 1 ), 1) - dist;
+        if ~isempty(G.Opts.exclude_points)
+            W_full(:, G.Opts.exclude_points) = 1;
+        end
     end
     
     % The weghing matrix must be a column stochastoc operator
@@ -360,9 +411,9 @@ for graph_iter = 1:G.Opts.num_graphs
 		% check for convergence
         fpoint_corr = corr( t( realign_iter, : )', t( realign_iter - 1, : )' );
         fprintf( 1, '%2.5f...', fpoint_corr);
-		converged = fpoint_corr > 0.9999;
+		converged = fpoint_corr > 0.99;
         
-        if (mod(realign_iter,100)==0)
+        if (mod(realign_iter,16)==0)
             % break after too many alignments - something is wrong
             user_break = true;
             fprintf('\nWarning: Force exit after %g iterations\n', realign_iter);
@@ -370,15 +421,20 @@ for graph_iter = 1:G.Opts.num_graphs
 	end
     
     G.v(end+1) = compute_energy(t(end, iter_l), dist(:, iter_l));
-%     figure('Color',[1 1 1]);;
-%     plot(1:numel(G.v), G.v, '-b');
+    figure('Color',[1 1 1]);
+    plot(1:numel(G.v), G.v, '-b');
 %     plot_iterations(G.Opts.plot_data, t);
     
 	fprintf( 1, '\n%d realignment iterations, ', realign_iter-1 );
 
 	% save final trajectory for this graph    
     G.T(graph_iter, :) = t(realign_iter, :);
-
+    
+    if ~isempty(G.Opts.exclude_points)
+        nearest_landmarks = knnsearch(data(iter_l, :), data(G.Opts.exclude_points, :));        
+        G.T(graph_iter, G.Opts.exclude_points) = G.T(graph_iter, iter_l(nearest_landmarks));
+    end
+    
     if (G.Opts.branch)
         % Recalculate branches post reassignments
         [RNK, bp, diffdists] = splittobranches(traj, traj(1, : ),data, iter_l, ...
@@ -452,7 +508,8 @@ function spdists = spdists_klnn( spdists, k, verbose )
 	if( length( n ) == 1 )
         [dists, paths, ~] = graphshortestpath( spdists, G.Opts.s,'METHOD','Dijkstra', 'directed', true);
         
-        % if not given landmarks list, decide on random landmarks        
+        % if not given landmarks list, decide on random landmarks
+        n_opts = 1:size(data,1);
         if (G.Opts.band_sample)
             n_opts = [];
             window_size = .1;
@@ -465,10 +522,8 @@ function spdists = spdists_klnn( spdists, k, verbose )
                     n_opts = [n_opts randsample( band, n - 1 - length(G.Opts.partial_order), true )];
                 end
             end
-            n = randsample( n_opts, n - 1 - length(G.Opts.partial_order) );
-        else
-            n = randsample( 1:size(data,1), n - 1 - length(G.Opts.partial_order) );
         end
+        n = randsample( n_opts, n - 1 - length(G.Opts.partial_order) );
         
         % flock landmarks 
         if (G.Opts.flock_landmarks > 0)
@@ -526,20 +581,33 @@ function spdists = spdists_klnn( spdists, k, verbose )
     paths_l2l = cell(length(l));
     for li = 1:length( l )
         [dist( li, : ), paths, ~] = graphshortestpath( spdists, l( li ),'METHOD','Dijkstra', 'directed', false );
+        if sum(cellfun(@(x)isempty(x), paths(l))) 
+            fprintf('\nWarning: found empty path');
+        end
         paths_l2l(li) = {paths(l)};
         unreachable = (dist(li,:)==inf);
+        unreachable(G.Opts.exclude_points) = 0;
+
         while (any(unreachable) && G.Opts.search_connected_components)
             fprintf(['\n Warning: %g were unreachable. try increasing l'...
                 'or k.Your data is possibly non continous, ie '...
                 'has a completely separate cluster of points.'...
                 'Wanderlust will roughly estimate their distance for now \n'],...
                 sum(unreachable));
+            if (G.Opts.plot_debug_branch)
+                figure('Color',[1 1 1]);
+                scatter(G.Opts.plot_data(:,1), G.Opts.plot_data(:,2), 150,'.b');
+                hold on;
+                scatter(G.Opts.plot_data(l(li),1), G.Opts.plot_data(l(li),2), 150,'.g');
+                scatter(G.Opts.plot_data(unreachable,1), G.Opts.plot_data(unreachable,2), 150,'.r');  
+            end
             % find closest unreachable point to reachable points.
             % connect it on the spdists. continue iteratively.
             unreachablei = find(unreachable);
             reachablei = find(~unreachable);
+            cou = 0;
             while ~isempty(unreachablei)
-                
+                cou = cou+1;
                 [idx, d] = knnsearch(data(unreachablei, :), data(reachablei, :));
                 closest_reachable = d==min(d);
                 
@@ -553,7 +621,7 @@ function spdists = spdists_klnn( spdists, k, verbose )
                     unreachablei(idx(closest_reachable));
                 unreachablei(idx(closest_reachable)) = [];
                 
-                if sum(unreachable) > 100
+                if ~mod(cou, 10)
                     break;
                 end
             end
@@ -565,6 +633,9 @@ function spdists = spdists_klnn( spdists, k, verbose )
         if( G.Opts.verbose )
             fprintf( 1, '.' );
         end
+    end
+    if ~isempty(G.Opts.exclude_points)
+        dist(:, G.Opts.exclude_points) = mean(mean(dist~=inf));
     end
     dist(dist==inf) = max(max(dist~=inf));
     
@@ -631,24 +702,25 @@ function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist,
     % square matrix of the difference of perspectives landmark to landmark
     diffdists = abs(reported - proposed);
     diffdists = .5*(diffdists'+diffdists);
-    c = segmentlikemichealjordanwould(diffdists, landmark_clusters, Opts.end_clusters);
+%     c = segmentlikemichealjordanwould(diffdists, landmark_clusters, Opts.end_clusters);
+    c = Opts.end_clusters(landmarks);
     
-%     show wine glass with clusterization
+    % show wine glass with clusterization
     [evec2, ~] = eig(diffdists);
     evec2 = evec2(:, 2);
     [~, idx] = sort(evec2);
-    figure('Color',[1 1 1]);
-    scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c(idx));
+%     figure('Color',[1 1 1]);
+%     scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c(idx), '.');
     
-    % show Q sorted by second eig vector, 
-    figure('Color',[1 1 1]);
-    subplot(1,2,1);
-    imagesc(diffdists(idx,idx));
-    
-    % show Q sorted by tau, 
-    subplot(1,2,2);
-    [~, idx_time] = sort(t(landmarks));
-    imagesc(diffdists(idx_time,idx_time));
+%     % show Q sorted by second eig vector, 
+%     figure('Color',[1 1 1]);
+%     subplot(1,2,1);
+%     imagesc(diffdists(idx,idx));
+%     
+%     % show Q sorted by tau, 
+%     subplot(1,2,2);
+%     [~, idx_time] = sort(t(landmarks));
+%     imagesc(diffdists(idx_time,idx_time));
     
     
     
@@ -666,70 +738,108 @@ function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist,
     end
 
     c_branch = setdiff(unique(c)', c(1)); % the branch indices
-    paths_branch_a = paths_l2l(c==c_branch(1));
-    paths_branch_b = paths_l2l(c==c_branch(2));
+    brancha = find(c==c_branch(1));
+    branchb = find(c==c_branch(2));
+    paths_branch_a = paths_l2l(brancha);
+    paths_branch_b = paths_l2l(branchb);
     fork_p = [];
     for i=1:numel(paths_branch_a)
-        paths_branch_a_to_b = paths_branch_a{i}(c==c_branch(2));
+        paths_branch_a_to_b = paths_branch_a{i}(branchb);
         for j=1:numel(paths_branch_a_to_b)
-            fork_p(end+1) = min(t(paths_branch_a_to_b{j}));
+            if isempty(paths_branch_a_to_b{j})
+                fprintf('no path from l:%g to l:%g', brancha(i), branchb(j));
+            else
+                fork_p(end+1) = min(t(paths_branch_a_to_b{j}));
+            end
         end
     end
     
     for i=1:numel(paths_branch_b)
-        paths_branch_b_to_a = paths_branch_b{i}(c==c_branch(1));
+        paths_branch_b_to_a = paths_branch_b{i}(brancha);
         for j=1:numel(paths_branch_b_to_a)
-            fork_p(end+1) = min(t(paths_branch_b_to_a{j}));
+           if isempty(paths_branch_b_to_a{j})
+                fprintf('no path from l:%g to l:%g', branchb(i), brancha(j));
+           else
+                fork_p(end+1) = min(t(paths_branch_b_to_a{j}));
+           end
         end
     end
     
     % reassign to clusters based on branch point
-    pb = prctile(fork_p, 80);
+    pb = prctile(fork_p, 50);
     c_new = c;
     [~,I] = min(abs(dist(1:numel(landmarks), :)));
     RNK = c_new(I);
     c_new(t(landmarks)' <= pb) = c(1);
-    % c_new(evec2<0 & t(landmarks)' >= pb) = c_branch(1);
-    % c_new(evec2>0 & t(landmarks)' >= pb) = c_branch(2);
-    reassign_landmarks = find(t(landmarks)' > pb & c_new == trunk);
-    median1 = median(dist(reassign_landmarks, find(RNK == c_branch(1)))');
-    median2 = median(dist(reassign_landmarks, find(RNK == c_branch(2)))');
-    c_new(reassign_landmarks(median1 >= median2)) = c_branch(2);
-    c_new(reassign_landmarks(median2 > median1)) = c_branch(1);
+    c_new(evec2<0 & t(landmarks)' >= pb) = c_branch(1);
+    c_new(evec2>0 & t(landmarks)' >= pb) = c_branch(2);
+%     reassign_landmarks = find(t(landmarks)' > pb & c_new == trunk);
+%     median1 = median(dist(reassign_landmarks, find(RNK == c_branch(1)))');
+%     median2 = median(dist(reassign_landmarks, find(RNK == c_branch(2)))');
+%     c_new(reassign_landmarks(median1 >= median2)) = c_branch(2);
+%     c_new(reassign_landmarks(median2 > median1)) = c_branch(1);
     
-    if (numel(unique(c_new))<3)
-        % we have an empty branch
-        % probably some outlier population is taking over the v2 signal
-        fprintf('problems:');
+    if (Opts.plot_landmark_paths && (Opts.plot_debug_branch || numel(unique(c_new))<3))
+
         figure('Color',[1 1 1]);
-        subplot(1,2,1);
         
-        scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c_new(idx));
-        title(sprintf('Problems: BP=%g', pb));
-        
-        subplot(1,2,2);
+        subplot(2,2,1);       
+        scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c_new(idx), '.');
+        title(sprintf('BP=%g', pb));
+
+        subplot(2,2,2);       
+        scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c(idx), '.');
+        title('MJ');
+
+        subplot(2,2,3);
         scatter(Opts.plot_data(:,1),Opts.plot_data(:,2),...
-            ones(size(data,1),1)*10, ones(size(data,1),1), '.b'); 
+            ones(size(data,1),1)*30, '.b'); 
         hold on;
         
-        scatter(Opts.plot_data(landmarks(c_new==1),1),Opts.plot_data(landmarks(c_new==1),2),...
-            ones(numel(landmarks(c_new==1)),1)*50, (c_new(c_new==1)+1)*5, 'ok');
-        scatter(Opts.plot_data(landmarks(c_new==2),1),Opts.plot_data(landmarks(c_new==2),2),...
-            ones(numel(landmarks(c_new==2)),1)*50, (c_new(c_new==2)+1)*5, 'or');
-        scatter(Opts.plot_data(landmarks(c_new==3),1),Opts.plot_data(landmarks(c_new==3),2),...
-            ones(numel(landmarks(c_new==3)),1)*50, (c_new(c_new==3)+1)*5, 'og');
+        scatter(Opts.plot_data(landmarks(c==1),1),Opts.plot_data(landmarks(c==1),2),...
+            ones(numel(landmarks(c==1)),1)*50, 'ok');
+        scatter(Opts.plot_data(landmarks(c==2),1),Opts.plot_data(landmarks(c==2),2),...
+            ones(numel(landmarks(c==2)),1)*50, 'or');
+        scatter(Opts.plot_data(landmarks(c==3),1),Opts.plot_data(landmarks(c==3),2),...
+            ones(numel(landmarks(c==3)),1)*50, 'og');
+        title('MJ');
         
+        subplot(2,2,4);
+        scatter(Opts.plot_data(:,1),Opts.plot_data(:,2),...
+            ones(size(data,1),1)*30, '.b'); 
+        hold on;
+
+        scatter(Opts.plot_data(landmarks(c_new==1),1),Opts.plot_data(landmarks(c_new==1),2),...
+            ones(numel(landmarks(c_new==1)),1)*50, 'ok');
+        scatter(Opts.plot_data(landmarks(c_new==2),1),Opts.plot_data(landmarks(c_new==2),2),...
+            ones(numel(landmarks(c_new==2)),1)*50, 'or');
+        scatter(Opts.plot_data(landmarks(c_new==3),1),Opts.plot_data(landmarks(c_new==3),2),...
+            ones(numel(landmarks(c_new==3)),1)*50, 'og');
+        title('bp');
+       
         % show Q sorted by second eig vector, 
         figure('Color',[1 1 1]);
+        
         subplot(1,2,1);
         imagesc(diffdists(idx,idx));
-        set(gca,'xtick',[],'ytick',[])
+        set(gca,'xtick',[],'ytick',[]);
+        drawnow;
+       	ax = gca;
+        ax.YTickLabel = cellfun(@num2str, num2cell(c(idx)), 'UniformOutput', false);
+        title('sorted by second eigen vector');
+        colormap jet
 
         % show Q sorted by tau, 
         subplot(1,2,2);
         [~, idx_time] = sort(t(landmarks));
         imagesc(diffdists(idx_time,idx_time));
-
+        set(gca,'xtick',[],'ytick',[]);
+        drawnow;
+       	ax = gca;
+        ax.YTickLabel = cellfun(@num2str, num2cell(c(idx_time)), 'UniformOutput', false);
+        title('sorted by wanderlust');
+        colormap jet
+        drawnow;
     end
         
 %     figure('Color',[1 1 1]);
@@ -769,8 +879,8 @@ function c=segmentlikemichealjordanwould(data, clusters, end_clusters)
     eval = eval(:,non_repeated_eigs);
 
     % Identify the top eigen values
-    [~, idx] = sort(max(eval), 'descend');
-    X = evec(:, idx(1:10));
+    [~, idx] = sort(max(eval), 'ascend');
+    X = evec(:, idx(1:3));
     Y = X./repmat(sqrt(sum(X.^2,2)), 1, size(X, 2));
 
     % Initialize kmeans
@@ -839,7 +949,8 @@ function v=compute_energy(tau, D)
         
         for i=1:n
             for j=1:n
-                v = v + E(i,j)*(abs(tau(i)-tau(j)))*D(i,j);
+                v = v - 2 * L(i,j)*(abs(tau(i)-tau(j)))*D(i,j);
+%                 v = v + E(i,j)*(abs(tau(i)-tau(j)))*D(i,j);
             end
         end
         
@@ -847,7 +958,7 @@ function v=compute_energy(tau, D)
         lambda = sum(E, 1);
         s = sum(lambda.*tau);        
         
-%         fprintf('\nV = %g\n S = %g\n',v, s);
+        fprintf('\nV = %g\n S = %g\n',v, s);
 end
 
 function plot_iterations(data, t)

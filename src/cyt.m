@@ -1030,7 +1030,7 @@ function plot_along_time(time_channel)
         arrWonderlust = arrWonderlust./prctile(arrWonderlust, 95);
         arrWonderlust(arrWonderlust>1) = 1;
     end
-    branch = strcmpi(channel_names{time_channel+1}, 'branch');
+    branch = strcmpi(channel_names{time_channel+1}, 'branch1');
     if (branch)
     plot_as_function(arrWonderlust, matData, ...
                     'num_locs', 100,...
@@ -1271,7 +1271,7 @@ function plot_cluster_tsne
     %finding previous tSNE or calculating tSNE
     tSNE_out = []; %retr('tsneParams');
     if (isempty(tSNE_out)),
-        if (size(centroids, 1) > 10)
+        if (size(centroids, 1) > 90)
             tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
         else
             tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
@@ -3248,10 +3248,16 @@ function runWanderlust
         % run wanderlust
 %         load('latest_lands.mat');
 %         params.num_landmarks = randsample(1:numel(gate_context), params.num_landmarks);
-%         params.num_landmarks = [params.num_landmarks find(ismember(gate_context,gates{end-1, 2}))];
-%         params.num_landmarks = [params.num_landmarks find(ismember(gate_context,gates{end, 2}))];
-
-        params.search_connected_components = false;
+%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-5, 2})), 5));
+%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-2, 2})), 15));
+%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-3, 2})), 15));
+%         params.num_landmarks = unique(params.num_landmarks);
+%         
+%         params.end_clusters = ones(size(gate_context));
+%         params.end_clusters(ismember(gate_context(:),gates{end-2, 2})) = 2;
+%         params.end_clusters(ismember(gate_context(:),gates{end-3, 2})) = 3;
+%         
+%         params.search_connected_components = true;
         G = wanderlust(data,params);
 %         latest_lands = G.landmarks;
 %         save('latest_lands.mat', 'latest_lands');
@@ -3709,11 +3715,11 @@ end
 function filterDiscreteChannels(channel_names)
     handles = gethand;
     channel_index=[];
-    cluster_channels=[];
+    cluster_channels={};
     for i=1:length(channel_names)
         if isDiscrete(i)
-            channel_index=i;
-            cluster_channels=channel_names(i);
+            channel_index(end+1)=i;
+            cluster_channels(end+1)=channel_names(i);
         end
     end
     
@@ -3901,12 +3907,12 @@ function cmiTransformGate_Callback(~, ~, ~)
     gates = retr('gates');
     selGates = get(handles.lstGates, 'Value');
     
-    for i=selGates
-        if isempty(gates{i,4}) % Gate is associated with a file.
-            uiwait(msgbox('Transformation\cleanup is only done for gates that are associated with a specific file.','Cannot perform transformation on selected files.','modal'));
-            return;
-        end
-    end
+%     for i=selGates
+%         if isempty(gates{i,4}) % Gate is associated with a file.
+%             uiwait(msgbox('Transformation\cleanup is only done for gates that are associated with a specific file.','Cannot perform transformation on selected files.','modal'));
+%             return;
+%         end
+%     end
     
     % assume all gates have the same channels.
     for i=selGates
@@ -3932,11 +3938,11 @@ function cmiTransformGate_Callback(~, ~, ~)
         % save gate data locally (this will also affect other gates
         % pointing to same data. should not be a problem since we're
         % only preprocessing file associated data
-        sessionData(gates{i, 2}, :) = gateData;
+%         sessionData(gates{i, 2}, :) = gateData;
 
         % DNA gate
         if (isDnagate)
-            debris_threshold = 0.9;
+            debris_threshold = 0.95;
 
             chDNA = cellstrfnd(gates{i, 3}, 'DNA');
             DNA = gateData(:, chDNA);
@@ -3945,14 +3951,14 @@ function cmiTransformGate_Callback(~, ~, ~)
             [~,j] = max(sum(dna_gm.mu,2));
             P = dna_gm.posterior(DNA);
             removeDNA = find(P(:,j) < debris_threshold);
-%                 gateData(removeDNA,:) = []; TODO find a way to delete the
-%                 data. This line would mess up the indices for events
-%                 after the deletion.
-            gates{i, 2}(removeDNA) = []; % <-- remove the indices from the gate
+
+            gateData(removeDNA, :) = []; % <-- remove the indices from the gate
         end
 
+        sessionData = [sessionData; gateData];
         put('sessionData', sessionData);
-        put('gates', gates);
+        addGate(sprintf('transformed %s', gates{i, 1}), (size(sessionData,1)-size(gateData,1)):size(sessionData,1));
+%         put('gates', gates);
 
         if (isSaveout)
             savePath = gates{i,4};
@@ -5387,8 +5393,8 @@ function openEndedAction
     GraphDiffOpts = struct( ...
     'Normalization','smarkov', ...
     'Epsilon',1, ...
-    'kNN', 20, ...
-    'kNNAutotune', 10, ...
+    'kNN', 10, ...
+    'kNNAutotune', 5, ...
     'kEigenVecs', 6, ...
     'Symmetrization', 'W+Wt', ...
     'DontReturnDistInfo', 1 );

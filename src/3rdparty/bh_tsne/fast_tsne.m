@@ -134,7 +134,7 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
     delete('result.dat');
     
     % while the hash map is too big removing the first element
-    if length(mapMat)>20 
+    while length(mapMat)>20 
         lstKeys= keys(mapMat); 
         remove(mapMat,lstKeys(1));
     end
