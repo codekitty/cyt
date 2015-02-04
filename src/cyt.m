@@ -1274,15 +1274,20 @@ function plot_cluster_tsne
         return;
     elseif color_chan ==0 % color by gate         
         tsne_col = cluster_mapping(:,3);
-        colormap(distinguishable_colors(numel(unique(tsne_col))));
-        scatter(tSNE_out(:,1), tSNE_out(:,2), (dot_size+31)*1, tsne_col,'fill'); %plotting
-%         legend(gate_names);
+        scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, (dot_size+31)); %plotting
+        legend(gate_names, 'Interpreter', 'none');
        % legend(gate_names,'Location','northoutside','Orientation','horizontal');
     elseif color_chan == cluster_channel,
         tsne_col = cluster_mapping(:,1);
-    	colormap(distinguishable_colors(numel(unique(tsne_col))));
-        scatter(tSNE_out(:,1), tSNE_out(:,2), dot_size, tsne_col, 'fill'); %plotting
-    else    
+        scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size); %plotting
+        groups = unique(tsne_col);
+        legend(cellfun(@num2str, num2cell(groups), 'UniformOutput', false), 'Interpreter', 'none');
+    else
+        if isDiscrete(color_chan)
+            errordlg('TODO (Lior): implement scatter_by_point here for discrete channels','Wrong Input');
+            return;
+        end
+        
         %finding marker means for marker selected
         inds = {};
 
@@ -1300,7 +1305,7 @@ function plot_cluster_tsne
         %making 0.95 quantile most red color and 0.05 quantile most blue color to compensate for outliers
         tsne_col(tsne_col < quantile(tsne_col, 0.05)) = quantile(tsne_col,0.05);
         tsne_col(tsne_col > quantile(tsne_col, 0.95)) = quantile(tsne_col, 0.95);
-        colormap jet;
+        colormap(jet(40));
         scatter(tSNE_out(:,1),tSNE_out(:,2), dot_size, tsne_col, 'fill');
         colorbar;
 
@@ -1308,11 +1313,13 @@ function plot_cluster_tsne
 
     xlabel('tSNE1');
     ylabel('tSNE2');
-
+    
+    %legend(strread(num2str(1:size(unique(selected_gates),1)),'%s'),'location','eastoutside');
+    %legend(horzcat(num2str(unique(selected_gates)),'%s'),'location','eastoutside');
     %tSNE_out = fast_tsne(centroids, 50, 10);
     %tSNE_plot(tSNE_out, 'metaclusters',meta_cluster_list, out_dir, dot_size);
     %scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), color_variable, dot_size)
-    set(handles.btnPickCluster, 'Enable', 'on');
+    %set(handles.btnPickCluster, 'Enable', 'on');
     dcm_obj = datacursormode(gcf);
     set(dcm_obj,'UpdateFcn',{@myupdatefcn,tSNE_out,cluster_sizes,cellsInCluster,cluster_mapping(:,3)});
     %set(dcm_obj,'UpdateFcn',{@myupdatefcn});
@@ -3487,123 +3494,6 @@ function btnGate_ClickedCallback(~, ~, ~, isPoly)
     set(handles.btnGatePoly, 'Enable', 'on');
     set(handles.btnGateRect, 'Enable', 'on');
     
-end
-
-%The user can choose one cluster to work with
-function btnPickCluster_Callback(hObject, eventdata, handles)
-    handles = gethand;
-    
-    set(handles.btnGatePoly, 'Enable', 'off');
-    set(handles.btnGateRect, 'Enable', 'off');
-    
-    session_data  = retr('sessionData');
-    gate_context   = retr('gateContext');
-    gates = retr('gates');
-    selected_channels = retr('selectedChannels');
-    selected_gates = get(handles.lstGates, 'Value');
-    
-    
-    %cicilia code
-    initClusterSelection = size(session_data, 2);
-    
-    %find meta cluster channel
-    cluster_channel      = retr('current_cluster_channels');
-    
-    %find cluster channel
-    cluster_channel      = retr('current_cluster_channels');
-        
-    %finding indeces of selected samples (currently assuming that no overlap occures between indeces)
-    inds = {};
-    
-    for i=1:length(selected_gates),
-        inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
-    end
-    
-    %finding cluster centroids and mapping between clusters and meta clusters
-    meta_cluster_channel = session_data(gate_context, cluster_channel);
-    [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = getOldData(session_data(gate_context, selected_channels), inds, session_data(gate_context, cluster_channel), meta_cluster_channel); 
-    
-    dot_size = 500/max(cluster_mapping(:,5)) * cluster_mapping(:,5)+5;  %rescaling size so they make sense size wise
-    
-    
-    %end of cecilica code
-    
-    %find tsne map
-    file= load('tsneResults.mat'); %loading the old tsne results
-    mapMat=file.mapMat;
-
-    hashMat= DataHash(centroids); %getting the  matrix hash
-    check = isKey(mapMat,hashMat); %check for key in the hash map
-
-    if (check==1) %no need to run tsne again->returning old result
-        value=values(mapMat,{hashMat});
-        mappedX=value{1};
-    end
-    
-    button_state = get(hObject,'State');
-    if strcmp(button_state,'off')
-        flag=0;
-    elseif strcmp(button_state,'on')
-        flag=1;
-     
-    end
-    
-    fig = handles.figure1;
-%   plot(rand(1,10));
-   dcm_obj = datacursormode(fig);
-   dcm_obj.enable='off';
-%   h.UpdateFcn = @clusterLabels;
-%   h.SnapToDataVertex = 'on';
-    
-    datacursormode on;
-    %dcm_obj = datacursormode(gcf);
-        
-     k=waitforbuttonpress;
-
-    %set(hObject,'Enable','off');
-%     h = datacursormode;
-%     dcm_obj = getCursorInfo(h);
-    
-%    dcm_obj = handle.listener(datacursormode(gcf));
-    
-    dcm_obj = datacursormode(gcf);
-    %set(dcm_obj,'DisplayStyle','datatip','SnapToDataVertex','off')
-
-    % Click on line to place datatip
-    
-    c_info = getCursorInfo(dcm_obj);    
-    
-    index = find(ismember(mappedX,c_info.Position,'rows'));
-    
-    
-    set(dcm_obj,'DisplayStyle','datatip','SnapToDataVertex','off',...
-        'UpdateFcn',{@clusterLabels,index,cluster_sizes(index),cellsInCluster(index)})
-    %refreshdata(gcf); 
-    hold on;
-    
-    scatter(c_info.Position(:,1), c_info.Position(:,2), (dot_size(index)+31)*1, 'MarkerEdgeColor',[0 0 0],'LineWidth',3); %plotting
-    dcm_obj.enable='on';
-%    update(c_info);
-    
-%     while (flag)
-%         %[x,y] = ginput(1)
-%         [x,y] = getpts()
-%         % Construct a questdlg with three options
-%         choice = questdlg('Would you want to select another cluster?', ...
-%             'Selecting Cluster', ...
-%             'Yes','No','No');
-%         % Handle response
-%         switch choice
-%             case 'Yes' 
-%                 flag=1;
-%             case 'No'
-%                 flag=0;
-%         end
-%     end
-    
-    
-    set(hObject,'State','off');
-    datacursormode('off');
 end
 
 function btnGateVal_Callback
