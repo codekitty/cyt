@@ -148,27 +148,6 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
         cd(work_dir);
         rethrow(ME);
     end
-<<<<<<< HEAD
-    tic, system([curr_path bh_tsne]); 
-    toc
-    [mappedX, landmarks, costs] = read_data;   
-    landmarks = landmarks + 1;              % correct for Matlab indexing
-    delete('data.dat');
-    delete('result.dat');
-    
-    % while the hash map is too big removing the first element
-    while length(mapMat)>20 
-        lstKeys= keys(mapMat); 
-        remove(mapMat,lstKeys(1));
-    end
-    
-    mapMat(hashMat)=mappedX; %adding the name and tsne result to hashmap
-    
-    save('tsneResults.mat','mapMat'); %saving into file
-    
-    cd(work_dir);
-=======
->>>>>>> phenodev
 end
 
 

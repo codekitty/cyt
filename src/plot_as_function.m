@@ -86,10 +86,67 @@ Y_vals = zeros(num_locs, size(Y, 2));
 Y_errs = zeros(num_locs, size(Y, 2));
 Yn = size(Y, 1);
 
-% compute a weight for each value (data point), at each plot location
-for i=1:num_locs
-	weights(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), avg_type, smoothness_factor);
-	weights_win(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), 'sliding', smoothness_factor);
+% check weights cache
+hashMat = DataHash(x); 
+hashVal = DataHash(string2hash([avg_type hashMat]) + smoothness_factor);
+
+tic;
+% Check for cached
+[curr_path, ~, ~] = fileparts(mfilename('fullpath'));
+curr_path = [curr_path filesep];
+cachefilename = [curr_path 'cachePlotAlongTimeResults.mat'];
+
+%checking for old lnn results for the same data
+fileCheck = exist (cachefilename, 'file');
+
+% if no file
+if (fileCheck==0) 
+    % create new hash map
+    mapMat = containers.Map(); 
+else
+    try
+        % loading the old weights results
+        file = load(cachefilename); 
+        mapMat=file.mapMat;
+    catch
+        fileCheck=0;
+        % create new hash map
+        mapMat = containers.Map(); 
+    end
+end
+
+% check for key in the hash map
+check = isKey(mapMat,hashVal); 
+
+% if weights found in cache
+if (check==1) 
+    % no need to run lnn again->returning old result
+    value=values(mapMat,{hashVal});
+    W = value{1};
+    weights= W.weights;
+    weights_win = W.weights_win;
+    fprintf('weights loaded from cache: %gs\n', toc);
+else
+    % compute a weight for each value (data point), at each plot location
+    for i=1:num_locs
+        weights(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), avg_type, smoothness_factor);
+        weights_win(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), 'sliding', smoothness_factor);
+    end
+    fprintf('weights computed: %gs\n', toc);
+
+    % while the hash map is too big removing the first element
+    while length(mapMat)>5 
+        lstKeys= keys(mapMat); 
+        remove(mapMat,lstKeys(1));
+    end
+
+    % adding the name and lnn result to hashmap
+    W.weights = weights;
+    W.weights_win = weights_win;
+    mapMat(hashVal)= W; 
+
+    % saving into file
+    save(cachefilename,'mapMat');
 end
 
 %clean branch
@@ -245,14 +302,17 @@ end
 % show density histogram under the plot to show the concentration 
 if ~(rank || control_density)    
     try
-    dens = sum(weights_win, 2)';
-    ca = axis;
-    hold on;
-    imagesc(X, ca(3):0.04:ca(3)+.05, dens, [0, max(dens)]);
-    colorbar;
-    axis(ca);
+        dens = sum(weights_win, 2)';
+        ca = axis;
+        hold on;
+        y_range = ca(4)-ca(3);
+        y_buffer = y_range*.04;
+    %     ylim([ca(3)-.1 ca(4)]);
+        imagesc(X, [ca(3)-y_buffer ca(3)-(.5*y_buffer)], dens, [0, max(dens)]);   
+        colorbar;
+        axis([ca(1:2) ca(3)-y_buffer ca(4)]);
     catch e
-    disp(getReport(e,'extended'));
+        disp(getReport(e,'extended'));
     end
 end
 
@@ -322,8 +382,8 @@ function weights = compute_weights(points, loc, type, factor)
     linear_slope = 10/range;
     
     if strcmpi('sliding', type) %set '1's on the indices in the windows 
-        weights = (points < (loc + 2*min_std_dev)) & ...
-                  (points > (loc - 2*min_std_dev));
+        weights = (points < (loc + 2*sqrt(min_std_dev))) & ...
+                  (points > (loc - 2*sqrt(min_std_dev)));
     
     elseif strcmpi('linear', type)
         weights = 1 - linear_slope*(abs(points - loc));

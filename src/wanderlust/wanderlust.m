@@ -129,7 +129,7 @@ else
     if false % tmp todo compute using the diffusion map code
         GraphDiffOpts = struct( ...
             'Normalization','smarkov', ...
-            'Distance','euclidean', ...
+            'Distance',G.Opts.metric, ...
             'Epsilon',1, ...
             'kNN', G.Opts.l, ...
             'kNNAutotune', 10, ... %'kEigenVecs', 6, ...
@@ -255,6 +255,7 @@ else
         nData = size(data,1);
         rem = cell(1, nData);
 
+        tic;
         % for each point 1..n
         parfor ci=1:nData
             
@@ -282,7 +283,8 @@ else
                 end
             end
         end
-        
+        sprintf('shared nearest neighbors computed: %gs', toc);
+
         rem = cell2mat(rem);
 
         % remove relevant indices
@@ -314,7 +316,7 @@ for graph_iter = 1:G.Opts.num_graphs
     end
     
     G.Opts.exclude_points = [];
-    G.Opts.minimum_incoming = 1;
+    G.Opts.minimum_incoming = 0;
     if G.Opts.minimum_incoming > 0 
        [i,j, s] = find(klnn);
         tabs = tabulate(i);
@@ -437,10 +439,11 @@ for graph_iter = 1:G.Opts.num_graphs
     
     if (G.Opts.branch)
         % Recalculate branches post reassignments
-        [RNK, bp, diffdists] = splittobranches(traj, traj(1, : ),data, iter_l, ...
+        [RNK, bp, diffdists] = splittobranches(traj, traj(1, : ), data, iter_l, ...
             dist,paths_l2l, G.Opts);
         G.B(graph_iter, :) = RNK;
         G.diffdists = diffdists;
+        G.bp(graph_iter) = bp;
     else
         G.B = G.T; % branch
         G.bp(graph_iter) = 0;
@@ -578,7 +581,7 @@ function spdists = spdists_klnn( spdists, k, verbose )
     end    
 
 	% calculate all shortest paths
-    paths_l2l = cell(length(l));
+    paths_l2l = cell(length(l),1);
     for li = 1:length( l )
         [dist( li, : ), paths, ~] = graphshortestpath( spdists, l( li ),'METHOD','Dijkstra', 'directed', false );
         if sum(cellfun(@(x)isempty(x), paths(l))) 
@@ -599,7 +602,8 @@ function spdists = spdists_klnn( spdists, k, verbose )
                 scatter(G.Opts.plot_data(:,1), G.Opts.plot_data(:,2), 150,'.b');
                 hold on;
                 scatter(G.Opts.plot_data(l(li),1), G.Opts.plot_data(l(li),2), 150,'.g');
-                scatter(G.Opts.plot_data(unreachable,1), G.Opts.plot_data(unreachable,2), 150,'.r');  
+                scatter(G.Opts.plot_data(unreachable,1), G.Opts.plot_data(unreachable,2), 150,'.r');
+                title('Unreachable in red (from gre');
             end
             % find closest unreachable point to reachable points.
             % connect it on the spdists. continue iteratively.
@@ -637,7 +641,12 @@ function spdists = spdists_klnn( spdists, k, verbose )
     if ~isempty(G.Opts.exclude_points)
         dist(:, G.Opts.exclude_points) = mean(mean(dist~=inf));
     end
-    dist(dist==inf) = max(max(dist~=inf));
+    if any(any(dist==inf))
+        dist(dist==inf) = max(max(dist~=inf));
+        if (G.Opts.verbose)
+            fprintf('\nwarning: some points remained unreachable (dist==inf)');
+        end
+    end
     
     % adjust paths according to partial order by redirecting
     nPartialOrder = length(partial_order);
@@ -679,7 +688,7 @@ function spdists = spdists_klnn( spdists, k, verbose )
         end
     end
     if (G.Opts.plot_landmark_paths)
-        plot_landmark_paths(G.Opts.plot_data, paths_l2l, l);
+%         plot_landmark_paths(G.Opts.plot_data, paths_l2l, l);
     end
     if (G.Opts.branch)
         [RNK, bp, diffdists] = splittobranches(traj, traj(1, :), data, l, dist, paths_l2l, G.Opts);
@@ -702,8 +711,8 @@ function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist,
     % square matrix of the difference of perspectives landmark to landmark
     diffdists = abs(reported - proposed);
     diffdists = .5*(diffdists'+diffdists);
-%     c = segmentlikemichealjordanwould(diffdists, landmark_clusters, Opts.end_clusters);
-    c = Opts.end_clusters(landmarks);
+    c = segmentlikemichealjordanwould(diffdists, [], []);
+%     c = Opts.end_clusters(landmarks);
     
     % show wine glass with clusterization
     [evec2, ~] = eig(diffdists);
@@ -727,17 +736,17 @@ function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist,
     % to pinpoint branch - look into the min (traj) of the paths from one cluster to the
     % other
     % Branch of the start cluster (Trunk)
-    if (length(landmark_clusters) > 0 )
-        table = tabulate(c(landmark_clusters == landmark_clusters(1)));
-        trunk = table(table(:,2) == max(table(:,2)), 1);
-        if (length(trunk) > 1)
-            trunk = c(1);
-        end
-    else
-        trunk = c(1);
-    end
+%     if (length(landmark_clusters) > 0 )
+%         table = tabulate(c(landmark_clusters == landmark_clusters(1)));
+%         trunk = table(table(:,2) == max(table(:,2)), 1);
+%         if (length(trunk) > 1)
+%             trunk = c(1);
+%         end
+%     else
+	trunk = c(1);
+%     end
 
-    c_branch = setdiff(unique(c)', c(1)); % the branch indices
+    c_branch = setdiff(unique(c)', trunk); % the branch indices
     brancha = find(c==c_branch(1));
     branchb = find(c==c_branch(2));
     paths_branch_a = paths_l2l(brancha);
@@ -766,7 +775,7 @@ function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist,
     end
     
     % reassign to clusters based on branch point
-    pb = prctile(fork_p, 50);
+    pb = prctile(fork_p, 70);
     c_new = c;
     [~,I] = min(abs(dist(1:numel(landmarks), :)));
     RNK = c_new(I);
@@ -783,13 +792,13 @@ function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist,
 
         figure('Color',[1 1 1]);
         
-        subplot(2,2,1);       
-        scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c_new(idx), '.');
-        title(sprintf('BP=%g', pb));
-
         subplot(2,2,2);       
-        scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c(idx), '.');
+        scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*150, c(idx), '.');
         title('MJ');
+
+        subplot(2,2,1);       
+        scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*150, c_new(idx), '.');
+        title(sprintf('After BP=%g', pb));
 
         subplot(2,2,3);
         scatter(Opts.plot_data(:,1),Opts.plot_data(:,2),...
@@ -871,29 +880,30 @@ function c=segmentlikemichealjordanwould(data, clusters, end_clusters)
     % Kmeans on normalized eigen vectors
     [evec, eval] = eig(L);
 
-    % Identify non repeated eigen values and vectors
-    temp = round(max(eval) * 10^5)/10^5;
-    table = tabulate(temp);
-    non_repeated_eigs = ismember(temp, table(table(:,2) == 1,1));
-    evec = evec(:,non_repeated_eigs);
-    eval = eval(:,non_repeated_eigs);
+%     % Identify non repeated eigen values and vectors
+%     temp = round(max(eval) * 10^5)/10^5;
+%     table = tabulate(temp);
+%     non_repeated_eigs = ismember(temp, table(table(:,2) == 1,1));
+%     evec = evec(:,non_repeated_eigs);
+%     eval = eval(:,non_repeated_eigs);
 
     % Identify the top eigen values
-    [~, idx] = sort(max(eval), 'ascend');
-    X = evec(:, idx(1:3));
+%     [~, idx] = sort(max(eval), 'ascend');
+    X = evec(:, 1:3);
     Y = X./repmat(sqrt(sum(X.^2,2)), 1, size(X, 2));
-
-    % Initialize kmeans
-    if length(end_clusters) > 0
-        medians = [];
-        for c = 1:length(end_clusters)
-            medians(c,:) =  median(Y(clusters == end_clusters(c),:));
-        end
-
-        c = kmeans(Y, [], 'start', medians);
-    else
-        c = kmeans(Y, 3);
-    end
+	c = kmeans(Y, 3);
+    
+%     % Initialize kmeans
+%     if length(end_clusters) > 0
+%         medians = [];
+%         for c = 1:length(end_clusters)
+%             medians(c,:) =  median(Y(clusters == end_clusters(c),:));
+%         end
+% 
+%         c = kmeans(Y, [], 'start', medians);
+%     else
+%         c = kmeans(Y, 3);
+%     end
 end
 
 function plot_landmark_paths(data, paths, l)
@@ -901,7 +911,7 @@ function plot_landmark_paths(data, paths, l)
     nData = size(data, 1);
     scatter (data(:, 1), data(:, 2), 2*ones(1, nData), '.b');
     hold on;
-    plot(data(l(1), 1), data(l(1), 2), 'Xr');
+    plot(data(l(1), 1), data(l(1), 2),20, 'Xr');
     scatter(data(l, 1), data(l, 2), 20*ones(numel(l), 1), 'or');
     for p=1:numel(paths)
         pathsp = paths{p};

@@ -487,7 +487,7 @@ end
 function channel_names=get_channelnames_from_header(fcshdr)
     channel_names1 = {fcshdr.par.name};
     channel_names2 = {fcshdr.par.name2};
-	if (strcmp(channel_names1,channel_names2)==0)
+	if false %(strcmp(channel_names1,channel_names2)==0)
         channel_names = combineNames(channel_names1,channel_names2);
     else
         channel_names=channel_names2;
@@ -1034,7 +1034,7 @@ function plot_along_time(time_channel)
     branch = strcmpi(channel_names{time_channel+1}, 'branch1');
     if (branch)
     plot_as_function(arrWonderlust, matData, ...
-                    'num_locs', 100,...
+                    'num_locs', 200,...
                     'avg_type', avg_type,...
                     'show_error', show_error,...
                     'labels', channel_names(selected_channels),...
@@ -1271,7 +1271,7 @@ function plot_cluster_tsne
     %finding previous tSNE or calculating tSNE
     tSNE_out = []; %retr('tsneParams');
     if (isempty(tSNE_out)),
-        if (size(centroids, 1) > 90)
+        if (size(centroids, 1) > 10)
             tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
         else
             tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
@@ -2674,7 +2674,8 @@ function hPlot=plotScatter
 %                     neut = [7,8,9,19];
 %                     tm27_tcells = [1,2,3,6,11,13,15,16,18,21,25];
 %                     tm33_tcells = [];
-%                     clr(setdiff(unqValues, 15)+1,:) = .8;
+%                     unwanted = [17 18 19 21 22 23 24 26 27 30 32 33 35];
+%                     clr(setdiff(unqValues, unwanted)+1,:) = .8;
                 end
                 
                     
@@ -3287,20 +3288,19 @@ function runWanderlust
         
         % run wanderlust
 %         load('latest_lands.mat');
-%         params.num_landmarks = randsample(1:numel(gate_context), params.num_landmarks);
-%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-5, 2})), 5));
-%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-2, 2})), 15));
-%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-3, 2})), 15));
-%         params.num_landmarks = unique(params.num_landmarks);
-%         
-%         params.end_clusters = ones(size(gate_context));
-%         params.end_clusters(ismember(gate_context(:),gates{end-2, 2})) = 2;
-%         params.end_clusters(ismember(gate_context(:),gates{end-3, 2})) = 3;
-%         
-%         params.search_connected_components = true;
+        params.num_landmarks = randsample(1:numel(gate_context), params.num_landmarks);
+        params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-3, 2})), 3));
+        params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-2, 2})), 15));
+        params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-1, 2})), 15));
+        params.num_landmarks = unique(params.num_landmarks);
+        
+        params.end_clusters = ones(size(gate_context));
+        params.end_clusters(ismember(gate_context(:),gates{end-2, 2})) = 2;
+        params.end_clusters(ismember(gate_context(:),gates{end-1, 2})) = 3;
+        
+        params.search_connected_components = true;
         G = wanderlust(data,params);
-%         latest_lands = G.landmarks;
-%         save('latest_lands.mat', 'latest_lands');
+        save([datestr(now,30) 'all_G.mat'], 'G');
              
         % save results
         if(params.branch)
@@ -3974,6 +3974,7 @@ function cmiTransformGate_Callback(~, ~, ~)
         % Transform
         if (~isempty(selectedChannels))
             gateData(:, selectedChannels) = asinh( gateData(:, selectedChannels) ./ cofactor );
+%             gateData(:, selectedChannels) = log( (gateData(:, selectedChannels)+1) );
         end
         
         % save gate data locally (this will also affect other gates
@@ -5393,8 +5394,24 @@ function openEndedAction
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
     
+    %% find clusters that are associated with unwanted gated data
+    all_data = session_data(gates{selected_gates(1), 2}, selected_channels);
+    unwanted_data = session_data(gates{selected_gates(2), 2}, selected_channels);
+    all_data_tabs = tabulate(all_data);
+    un_data_tabs = tabulate(unwanted_data);
+
     
-%     % manu - reverse a result computed from a branch
+    undata_prc(un_data_tabs(:,1)+1) = un_data_tabs(:,2)./all_data_tabs(un_data_tabs(:,1)+1,2);
+    unwanted_clusters = find(undata_prc>.6)-1;
+    
+    unwanted_points = ismember(all_data, unwanted_clusters);
+    new_gate_inds = gates{selected_gates(1), 2}(~unwanted_points);
+    
+    new_gate_name = {['thymus1 excld(' num2str(unwanted_clusters) ')']};
+    createNewGate(new_gate_inds, channel_names, new_gate_name);
+    return;
+    
+     %% for manu - reverse a result computed from a branch
 %     wanderlust = session_data(gate_context, selected_channels(1));
 %     branch     = session_data(gate_context, selected_channels(2));
 %     
@@ -5422,7 +5439,7 @@ function openEndedAction
 %     
 %     return;
     
-    % run diffusion map - return 6 eigs
+    %% run diffusion map - return 6 eigs
     data = session_data(gate_context, selected_channels);
     XOpts = struct('NumberOfPoints',1000,...
         'Dim',2,...
@@ -5448,7 +5465,7 @@ function openEndedAction
     E2 = E2-min(E2);
     E2 = E2./max(E2);
     E2 = 1-E2;
-    addChannels({'E2','E2 reversed'}, [G.EigenVecs(:, 2) E2]); 
+    addChannels({'e1','e2','e3', 'E2','E2 reversed'}, [G.EigenVecs(:, 1:3) G.EigenVecs(:, 2) E2]); 
     
 %     addChannels({'t1','t2','t3'},G.T(:, 1:3));
 %     addChannels({'w1','w2','w3'},G.W(:, 1:3));
@@ -5456,6 +5473,7 @@ function openEndedAction
  
     return;
 
+    %% gm fit for dna channels
     for i=selected_gates
             debris_threshold = 0.95;
 
