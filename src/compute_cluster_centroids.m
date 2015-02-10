@@ -1,4 +1,4 @@
-function [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = getOldData(data, inds, cluster_channel, meta_channel)
+function [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = compute_cluster_centroids(data, inds, cluster_channel, meta_channel)
 
 
     cluster_mapping = [];
