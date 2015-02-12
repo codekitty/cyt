@@ -2481,7 +2481,7 @@ function hPlot=plotScatter
         set(h, 'String', '');
 
         if (get(handles.chkDensity, 'Value'))
-            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 512);
+            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 64);
             hold on;
 %             cmap = jet;
 %             cmap(1, :) = [1, 1, 1];
