@@ -66,26 +66,33 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
     cd(curr_path);
     
     %checking for old tsne results for the same data
-    
+    nocacheflag=0;
+    try
     fileCheck= exist ('tsneResults.mat', 'file');
     
     if (fileCheck==0) %no file
         mapMat = containers.Map(); % hash map for matrix name and tsne output
         hashMat= DataHash(X); %getting the  matrix hash
     else
-        file= load('tsneResults.mat') %loading the old tsne results
+        file= load('tsneResults.mat'); %loading the old tsne results
         mapMat=file.mapMat;
         
         hashMat= DataHash(X); %getting the  matrix hash
         check = isKey(mapMat,hashMat); %check for key in the hash map
     
         if (check==1) %no need to run tsne again->returning old result
+            disp 'map found in cache.';
             value=values(mapMat,{hashMat});
             mappedX=value{1};
+            cd(work_dir);
             return;  
         end
     end
- 
+    catch ME
+        disp 'Warning: failed loading results from cache';
+        disp(getReport(ME,'extended'));
+        nocacheflag=1;
+    end
     
     % Perform the initial dimensionality reduction using PCA
     X = double(X);
@@ -134,14 +141,16 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
     delete('result.dat');
     
     % while the hash map is too big removing the first element
-    if length(mapMat)>20 
-        lstKeys= keys(mapMat); 
-        remove(mapMat,lstKeys(1));
+    if ~nocacheflag 
+        if length(mapMat)>10 
+            lstKeys= keys(mapMat); 
+            remove(mapMat,lstKeys(1));
+        end
+
+        mapMat(hashMat)=mappedX; %adding the name and tsne result to hashmap
+
+        save('tsneResults.mat','mapMat'); %saving into file
     end
-    
-    mapMat(hashMat)=mappedX; %adding the name and tsne result to hashmap
-    
-    save('tsneResults.mat','mapMat'); %saving into file
     
     cd(work_dir);
 end

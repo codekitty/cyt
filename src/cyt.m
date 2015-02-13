@@ -2247,9 +2247,9 @@ function hPlot=plotScatter
             end
 
         
-%         if (~get(handles.chkDensity, 'Value'))
+        if (~get(handles.chkDensity, 'Value'))
             myplotclr(vX, vY, vZ, vColor_discrete, 'o', clr, [min(vColor_discrete), max(vColor_discrete)], nSelChannels == 3);
-%         end
+        end
         box on;
         colorbar off;
 
@@ -2292,9 +2292,9 @@ function hPlot=plotScatter
                 end
 
                 
-%         if (~get(handles.chkDensity, 'Value'))
+        if (~get(handles.chkDensity, 'Value'))
                 myplotclr(vX, vY, vZ, vColor, 'o', colormap, clim, nSelChannels == 3);   
-%         end
+        end
                 colorbar;
                 caxis(clim);
                 
@@ -2330,9 +2330,9 @@ function hPlot=plotScatter
             end
             
             % plot 
-%             if (~get(handles.chkDensity, 'Value'))
+            if (~get(handles.chkDensity, 'Value'))
             myplotclr(vX, vY, vZ, vColor_discrete, 'o', clr, [min(vColor_discrete), max(vColor_discrete)], false)
-%             end
+            end
             colorbar off;
             hl=legend(cellfun(@(n)(num2str(n)), num2cell(unique(vColor)), 'UniformOutput', false));                    
 
@@ -2481,12 +2481,15 @@ function hPlot=plotScatter
         set(h, 'String', '');
 
         if (get(handles.chkDensity, 'Value'))
-            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 64);
-            hold on;
+            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 32);
+            
 %             cmap = jet;
 %             cmap(1, :) = [1, 1, 1];
 %             colormap(cmap);
-            contour(x, y, density, 512);
+            
+            hold on;
+%             drawnow;
+            contour(x, y, density, 1024);
             hold off;
         end
         if (get(handles.chkLog, 'Value'))
@@ -2754,12 +2757,12 @@ function runTSNE(normalize)
     tic;
     data = sessionData(gate_context, selected_channels);
         
-    selection = questdlg('Compute over normalized data?' ,...
-                     'Normalize',...
-                     'Yes','No','Yes');
-    if strcmp(selection,'Yes')
-        data = mynormalize(data, 99);
-    end
+%     selection = questdlg('Compute over normalized data?' ,...
+%                      'Normalize',...
+%                      'Yes','No','Yes');
+%     if strcmp(selection,'Yes')
+%         data = mynormalize(data, 99);
+%     end
 
 %     new_selected_channels = selected_channels(prctile(data, 99) >= 2.2);
 %     set(handles.lstChannels,'Value', new_selected_channels);
@@ -3117,9 +3120,36 @@ function btnGate_ClickedCallback(~, ~, ~, isPoly)
     CH1 = selectedChannels(1);
     CH2 = selectedChannels(2);
 
-    setStatus('Waiting: Double click on node when finished');
-    gate = tsne_gate(gcf, sessionData(gateContext, [CH1 CH2]), 1, isPoly);
-    setStatus(sprintf('you have gated: %g data points', numel(gate))); 
+    mapped_data = sessionData(gateContext, [CH1 CH2]);
+    type = isPoly;
+    
+    if strcmp(type, 'rect')
+        h = imrect(gca);
+
+        disp('Adjust your selection. Double click on node when finished');
+        setStatus('Adjust your selection. Double click on node when finished');
+        rect = wait(h);
+
+        left = rect(1);
+        bottom = rect(2);
+        width = rect(3);
+        height = rect(4);
+
+        gate = find((mapped_data(:,1)>left) & (mapped_data(:,1)<left+width) & (mapped_data(:,2)>bottom) & (mapped_data(:,2)<bottom+height));
+    else
+        if strcmp(type, 'poly')
+            h = impoly(gca);
+        elseif strcmp(type, 'ellipse')
+            h = imellipse(gca);
+        end
+
+        disp('Adjust your selection. Double click on node when finished');
+        setStatus('Adjust your selection. Double click on node when finished');
+        vert = wait(h);
+
+        gate = find(inpoly(mapped_data, vert));
+    end
+    setStatus([sprintf('you have gated: %g data points %2.2f', numel(gate), (numel(gate)/numel(gateContext))*100) '%']); 
 
     if size(gate, 2) > 0
         % create new gate
