@@ -475,14 +475,13 @@ function OpenMenuItem_Callback(~, ~, ~)
     close(hWaitbar);
 end
 
-%Due to diffrent names
+% Due to diffrent names
 function channel_names=oldget_channelnames_from_header(fcshdr)
     channel_names = {fcshdr.par.name2};
 	if isempty(channel_names{1})
         channel_names = {fcshdr.par.name};
 	end
 end
-
 
 function channel_names=get_channelnames_from_header(fcshdr)
     channel_names1 = {fcshdr.par.name};
@@ -521,7 +520,7 @@ function PrintMenuItem_Callback
     end
 
     handles = gethand;
-    print(handles.figure1, '-dpng', '-noui', [pathname filename]);
+    print(gca, '-dpng', '-noui', [pathname filename]);
 end
 % --------------------------------------------------------------------
 function CloseMenuItem_Callback(~, ~, handles)
@@ -2855,7 +2854,7 @@ function hPlot=plotScatter
             if numel(gateContext)<2000
                 parzan(sessionData(gateContext, nCH1), sessionData(gateContext, nCH2));
             else
-            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 1024);
+            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 64);
             
 %             cmap = jet;
 %             cmap(1, :) = [1, 1, 1];
@@ -3129,11 +3128,14 @@ function runTSNE(normalize)
     tic;
     data = sessionData(gate_context, selected_channels);
         
+    if ~exist('normalize','var')
     selection = questdlg('Compute over normalized data?' ,...
                      'Normalize',...
                      'Yes','No','Yes');
-    if strcmp(selection,'Yes')
-        data = mynormalize(data, 'percentile', 99);
+    	normalize= strcmp(selection,'Yes');
+    end
+    if normalize  
+        data = mynormalize(data, 'percentile', 99);      
     end
 
 %     new_selected_channels = selected_channels(prctile(data, 99) >= 2.2);
@@ -5393,6 +5395,14 @@ function openEndedAction
     gates         = retr('gates'); % all gates (names\indices) in cell array
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
+    a = 1;
+    
+    for gi=1:numel(selected_gates)
+        set(handles.lstGates, 'Value', selected_gates(gi)); % currently selected 
+        lstGates_Callback;
+        runTSNE(false);
+    end
+    return;
     
     %% find clusters that are associated with unwanted gated data
     all_data = session_data(gates{selected_gates(1), 2}, selected_channels);
@@ -5525,7 +5535,7 @@ function openEndedAction
     [idx, sorted] = sort(channel_names);
     session_data = session_data(:, sorted);
     for g=1:size(gates, 1)
-        gates{g, 3} =   idx;
+        gates{g, 3} = idx;
     end
     
     put('gates', gates);
@@ -5559,35 +5569,12 @@ function openEndedAction
 %     return;
 
     %% bubble check
-    binsize = 20;
-    current_figure = gcf;
-    h = figure;
-    try
-        for i=1:numel(selected_gates)
-            data = session_data(gates{selected_gates(i), 2}, :);
-            nbins = floor(size(data,1)/binsize);
-            data = data(1:nbins*binsize, :);
-            [~, idx] = sort(data(:, 1));
-            for ch=2:length(channel_names)
-                valuesperbin = reshape(data(idx, ch), binsize, nbins);
-                means = mean(valuesperbin, 1);
-                plot(1:nbins, means , '-');
-                title(channel_names{ch});
-                print(h,'-dpng', validfilename(sprintf('%s %s vs time', gates{i, 1}, channel_names{ch})));
-            end
-        end
-    catch e
-
-        % Return to base figure
-        set(0,'CurrentFigure', current_figure);
-        close(h);
-
-        disp(getReport(e,'extended'));
+    for i=1:numel(selected_gates)
+        vtime = data(:, 1);
+        data  = session_data(gates{selected_gates(i), 2}, :);
+        bubble_check(data, vtime, channel_names(2:end), gates{1,gates});
     end
-    set(0,'CurrentFigure', current_figure);
-    close(h);
-
-%     return;
+    return;
 
    %% grab an untrasformed gate from transformed gate
     transformed_cd8_gate_indices = gates{selected_gates(2), 2};
