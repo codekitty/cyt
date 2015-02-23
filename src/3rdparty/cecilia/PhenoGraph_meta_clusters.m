@@ -1,6 +1,6 @@
-%% Using LOUVAIN to get meta clusters
+%% Using PhenoGraph to get meta clusters
 
-function [cluster_mapping, centroids, meta_cluster_channel] = LOUVAIN_meta_clusters(data, cluster_channel, inds, nKNeighbors, metric)
+function [cluster_mapping, centroids, meta_cluster_channel] = PhenoGraph_meta_clusters(data, cluster_channel, inds, nKNeighbors, metric)
 
 %returns matrix where each row is a cluster and 
 %col1 = meta cluster number
@@ -39,8 +39,6 @@ function [cluster_mapping, centroids, meta_cluster_channel] = LOUVAIN_meta_clust
 %     % create a sparse KNN matrix
 %     sparse_adjacency_matrix = spdists_knngraph(centroids, nKNeighbors, lower(metric), 5000);  %why 5000?
 % 
-%     % Call louvain's matlab implementation
-% 	[cmty, mod] = spdists_louvain(sparse_adjacency_matrix);
     
 %     %finding level with highest modularity
 %     mod_high = mod(end);

@@ -1,12 +1,9 @@
-function [c,Q,bestpartition] = LouvainfromBin( filename, numiters )
- %the path to louvain in each cyt
+function [c,Q,bestpartition,bestpartitionhierarchy] = LouvainfromBin( filename, numiters )
+%the path to louvain in each cyt
 [curr_path, ~, ~] = fileparts(mfilename('fullpath'));
 curr_path = [curr_path filesep];
 ps = [curr_path 'Louvain' filesep];
 
-if isempty(ps)
-    error('Please enter the path to Louvain C++ code')
-end
 filename = strrep( filename, '.bin', '' );
 % begin
 fprintf(1, 'MATLAB: calling convert:\n');
@@ -58,6 +55,7 @@ for i = 1:numel(Q)
     end
 end
 bestpartition = c{I,J};
+bestpartitionhierarchy = c(I,:);
 % clean up
 files{1} = dir([filename '*.tmp']);
 files{2} = dir([filename '*.tree']);
