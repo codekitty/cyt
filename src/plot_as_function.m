@@ -145,8 +145,6 @@ else
     W.weights_win = weights_win;
     mapMat(hashVal)= W; 
 
-    % saving into file
-    save(cachefilename,'mapMat');
 end
 
 %clean branch
@@ -369,6 +367,14 @@ if (make_distribution_movie && askuser('Are you sure you''d like to make a movie
         % Return to base figure
         set(0,'CurrentFigure', current_figure);
         disp (getReport(e));
+    end
+end
+if (check==0)
+    % saving into file
+    try
+    save(cachefilename,'mapMat');
+    catch
+        fprintf('error caching weights in %s', cachefilename);
     end
 end
 

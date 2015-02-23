@@ -380,6 +380,7 @@ for graph_iter = 1:G.Opts.num_graphs
     end
     
     % save initial solution - start point's shortest path distances
+    t=[];
     t( 1,:)  = traj(1,:);
 	t( end+1, : ) = sum( traj .* W );
     
@@ -401,7 +402,7 @@ for graph_iter = 1:G.Opts.num_graphs
         end
 
         if (G.Opts.branch)
-            RNK = splittobranches(traj, traj(1, : ),data, iter_l, dist,paths_l2l, G.Opts);
+            [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, : ),data, iter_l, dist,paths_l2l, G.Opts);
             W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s), iter_l);
         end
        
@@ -413,7 +414,7 @@ for graph_iter = 1:G.Opts.num_graphs
 		% check for convergence
         fpoint_corr = corr( t( realign_iter, : )', t( realign_iter - 1, : )' );
         fprintf( 1, '%2.5f...', fpoint_corr);
-		converged = fpoint_corr > 0.99;
+		converged = fpoint_corr > 0.9999;
         
         if (mod(realign_iter,16)==0)
             % break after too many alignments - something is wrong
@@ -439,11 +440,12 @@ for graph_iter = 1:G.Opts.num_graphs
     
     if (G.Opts.branch)
         % Recalculate branches post reassignments
-        [RNK, bp, diffdists] = splittobranches(traj, traj(1, : ), data, iter_l, ...
+        [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, : ), data, iter_l, ...
             dist,paths_l2l, G.Opts);
         G.B(graph_iter, :) = RNK;
         G.diffdists = diffdists;
         G.bp(graph_iter) = bp;
+        G.Y(graph_iter, :) = Y;
     else
         G.B = G.T; % branch
         G.bp(graph_iter) = 0;
@@ -691,11 +693,11 @@ function spdists = spdists_klnn( spdists, k, verbose )
 %         plot_landmark_paths(G.Opts.plot_data, paths_l2l, l);
     end
     if (G.Opts.branch)
-        [RNK, bp, diffdists] = splittobranches(traj, traj(1, :), data, l, dist, paths_l2l, G.Opts);
+        [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, :), data, l, dist, paths_l2l, G.Opts);
     end
 end
 
-function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist, paths_l2l, Opts)
+function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, dist, paths_l2l, Opts)
     
     proposed = repmat(t(landmarks), size(trajs, 1), 1);
     reported = trajs(1:length(landmarks), landmarks);
@@ -715,8 +717,9 @@ function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist,
 %     c = Opts.end_clusters(landmarks);
     
     % show wine glass with clusterization
-    [evec2, ~] = eig(diffdists);
-    evec2 = evec2(:, 2);
+%     [evec2, ~] = eig(diffdists);
+    [EigenVecs, EigenVals] = GetEigs(diffdists, 2, [],struct('TakeDiagEigenVals',1));
+    evec2 = EigenVecs(:, 2);
     [~, idx] = sort(evec2);
 %     figure('Color',[1 1 1]);
 %     scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c(idx), '.');
@@ -787,16 +790,18 @@ function [RNK, pb, diffdists] = splittobranches(trajs, t, data, landmarks, dist,
 %     median2 = median(dist(reassign_landmarks, find(RNK == c_branch(2)))');
 %     c_new(reassign_landmarks(median1 >= median2)) = c_branch(2);
 %     c_new(reassign_landmarks(median2 > median1)) = c_branch(1);
-    
+    e2 = evec2;
+    timev = t(landmarks);
+    Y = e2(I);
     if (Opts.plot_landmark_paths && (Opts.plot_debug_branch || numel(unique(c_new))<3))
 
         figure('Color',[1 1 1]);
         
-        subplot(2,2,2);       
+        subplot(2,2,1);       
         scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*150, c(idx), '.');
         title('MJ');
 
-        subplot(2,2,1);       
+        subplot(2,2,2);       
         scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*150, c_new(idx), '.');
         title(sprintf('After BP=%g', pb));
 
@@ -878,32 +883,11 @@ function c=segmentlikemichealjordanwould(data, clusters, end_clusters)
     L = D*A*D;
 
     % Kmeans on normalized eigen vectors
-    [evec, eval] = eig(L);
+    [evec, ~] = GetEigs(L, 3, [],struct('TakeDiagEigenVals',1));
 
-%     % Identify non repeated eigen values and vectors
-%     temp = round(max(eval) * 10^5)/10^5;
-%     table = tabulate(temp);
-%     non_repeated_eigs = ismember(temp, table(table(:,2) == 1,1));
-%     evec = evec(:,non_repeated_eigs);
-%     eval = eval(:,non_repeated_eigs);
-
-    % Identify the top eigen values
-%     [~, idx] = sort(max(eval), 'ascend');
     X = evec(:, 1:3);
     Y = X./repmat(sqrt(sum(X.^2,2)), 1, size(X, 2));
 	c = kmeans(Y, 3);
-    
-%     % Initialize kmeans
-%     if length(end_clusters) > 0
-%         medians = [];
-%         for c = 1:length(end_clusters)
-%             medians(c,:) =  median(Y(clusters == end_clusters(c),:));
-%         end
-% 
-%         c = kmeans(Y, [], 'start', medians);
-%     else
-%         c = kmeans(Y, 3);
-%     end
 end
 
 function plot_landmark_paths(data, paths, l)

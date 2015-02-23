@@ -1030,7 +1030,7 @@ function plot_along_time(time_channel)
         arrWonderlust = arrWonderlust./prctile(arrWonderlust, 95);
         arrWonderlust(arrWonderlust>1) = 1;
     end
-    branch = strcmpi(channel_names{time_channel+1}, 'branch1');
+    branch = any(strfind(channel_names{time_channel+1}, 'branch'));
     if (branch)
     plot_as_function(arrWonderlust, matData, ...
                     'num_locs', 200,...
@@ -1040,7 +1040,7 @@ function plot_along_time(time_channel)
                     'normalize', normalizeY,...
                     'rank', rankY,...
                     'svGolay', svGolay,...
-                    'smooth', smoothness_factor,...);%,...
+                    'smooth', smoothness_factor,...
                     'branch', session_data(gate_context, time_channel+1));
     else
     plot_as_function(arrWonderlust, matData, ...
@@ -3290,15 +3290,15 @@ function runWanderlust
         
         % run wanderlust
 %         load('latest_lands.mat');
-        params.num_landmarks = randsample(1:numel(gate_context), params.num_landmarks);
-        params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-3, 2})), 3));
-        params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-2, 2})), 15));
-        params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-1, 2})), 15));
-        params.num_landmarks = unique(params.num_landmarks);
-        
-        params.end_clusters = ones(size(gate_context));
-        params.end_clusters(ismember(gate_context(:),gates{end-2, 2})) = 2;
-        params.end_clusters(ismember(gate_context(:),gates{end-1, 2})) = 3;
+%         params.num_landmarks = randsample(1:numel(gate_context), params.num_landmarks);
+%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-4, 2})), 3));
+%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-3, 2})), 15));
+%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-2, 2})), 15));
+%         params.num_landmarks = unique(params.num_landmarks);
+%         
+%         params.end_clusters = ones(size(gate_context));
+%         params.end_clusters(ismember(gate_context(:),gates{end-2, 2})) = 2;
+%         params.end_clusters(ismember(gate_context(:),gates{end-1, 2})) = 3;
         
         params.search_connected_components = true;
         G = wanderlust(data,params);
@@ -3308,14 +3308,21 @@ function runWanderlust
         if(params.branch)
             for r=1:size(G.T,1)
                 addChannels({sprintf('wander-branch%g', r),...
-                                sprintf('branch%g', r)},...
-                            [G.T(r,:)' G.B(r, :)'],...
+                                sprintf('branch%g', r),...
+                                sprintf('Y%g', r)},...
+                            [G.T(r,:)' G.B(r, :)' G.Y(r,:)'],...
                             gate_context);
             end
+%             addChannels({'twod1','twod2'},...
+%                         [G.twod(:,1) G.twod(:, 2)],...
+%                         gate_context(G.landmarks));
         else
-            traj = mean(G.T, 1);
-            traj = traj';
-             addChannels({'wanderlust'}, traj, gate_context);
+%             traj = mean(G.T, 1);
+%             traj = traj';
+%             addChannels({'wanderlust'}, traj, gate_context);
+%             traj = mean(G.T, 1);
+            traj = G.T';
+            addChannels(strcat({'wanderlust '},int2str((1:size(traj,2)).'))', traj, gate_context);
         end
     catch e
         fprintf('Wanderlust failed: %s', getReport(e,'extended'));
@@ -5114,7 +5121,8 @@ function runPCA
     gate_context	= retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
     
-    coeff = pca(session_data(gate_context, selected_channels),2);
+    [coeff, mapping] = pca(session_data(gate_context, selected_channels),2);
+    coeff = coeff./repmat(mapping.lambda', size(coeff, 1),1);
     addChannels({'PC1','PC2'}, coeff, gate_context); 
 end
 
@@ -5397,6 +5405,41 @@ function openEndedAction
     channel_names = retr('channelNames');
     a = 1;
     
+    data = session_data(gate_context, selected_channels);
+     
+    GraphDiffOpts = struct( ...
+    'Normalization','smarkov', ...
+    'Epsilon',1, ...
+    'kNN', 15, ...
+    'kEigenVecs', 20, ...
+    'Symmetrization', 'W+Wt', ...
+    'DontReturnDistInfo', 1); ...
+%     'Distance', 'cov');
+%     'kNNAutotune', 200, ...
+
+    GraphDiffOpts.DontReturnDistInfo=0;
+    G = GraphDiffusion(data', 0, GraphDiffOpts);  
+   
+    addChannels(strcat({'e'},int2str((2:20).'),int2str(G.EigenVals(2:20)))',...
+                G.EigenVecs(:, 2:20));
+
+	return;
+   %% create shortcut
+%     new_data = 50:4:70;
+%     new_data = new_data';
+%     new_data = [new_data, 210+ randn(size(new_data))*20];
+%     session_data(end+1:end+size(new_data,1), :) = 0;
+%     session_data(end-size(new_data,1)+1:end, selected_channels) = new_data;
+%     put('sessionData', session_data);
+%     addGate('with outliers', [gate_context, size(session_data,1)-size(new_data,1)+1:size(session_data,1)]);
+%     return;
+
+%     new_data = mynormalize(session_data(gate_context, selected_channels), 99);
+%     addChannels({'normed1', 'normed2'}, new_data);
+%     return;
+    
+  return;
+
     for gi=1:numel(selected_gates)
         set(handles.lstGates, 'Value', selected_gates(gi)); % currently selected 
         lstGates_Callback;
@@ -5449,39 +5492,7 @@ function openEndedAction
 %     
 %     return;
     
-    %% run diffusion map - return 6 eigs
-    data = session_data(gate_context, selected_channels);
-    XOpts = struct('NumberOfPoints',1000,...
-        'Dim',2,...
-        'EmbedDim',100,...
-        'NoiseType',...
-        'Gaussian',...
-        'NoiseParam',0.01);
-    
-    GraphDiffOpts = struct( ...
-    'Normalization','smarkov', ...
-    'Epsilon',1, ...
-    'kNN', 10, ...
-    'kNNAutotune', 5, ...
-    'kEigenVecs', 6, ...
-    'Symmetrization', 'W+Wt', ...
-    'DontReturnDistInfo', 1 );
-
-    GraphDiffOpts.DontReturnDistInfo=0;
-    G = GraphDiffusion(data', 0, GraphDiffOpts);  
-   
-%     addChannels({'e1','e2','e3','e4','e5','e6'},G.EigenVecs(:, 1:6));
-    E2 = G.EigenVecs(:, 2);
-    E2 = E2-min(E2);
-    E2 = E2./max(E2);
-    E2 = 1-E2;
-    addChannels({'e1','e2','e3', 'E2','E2 reversed'}, [G.EigenVecs(:, 1:3) G.EigenVecs(:, 2) E2]); 
-    
-%     addChannels({'t1','t2','t3'},G.T(:, 1:3));
-%     addChannels({'w1','w2','w3'},G.W(:, 1:3));
-%     addChannels({'p1','p2','p3'},G.P(:, 1:3));
- 
-    return;
+     return;
 
     %% gm fit for dna channels
     for i=selected_gates
@@ -5530,7 +5541,7 @@ function openEndedAction
     channel_names(chBEAD) = strcat('..', channel_names(chBEAD))
 
     channel_names{1} =  '...time';
-    channel_names{2} =  '...viability';
+    channel_names{2} =  '...event length';
     
     [idx, sorted] = sort(channel_names);
     session_data = session_data(:, sorted);
