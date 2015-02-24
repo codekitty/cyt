@@ -1,6 +1,6 @@
 % PhenoGraph: Robust graph-based phenotype discovery
 % -----------------------------------------------------------------------
-%  [labels,G,c,Q] = phenograph( data, k, varargin )
+%  [labels,communities,G] = phenograph( data, k, varargin )
 %
 % INPUT:
 %     data - n x d matrix of n single cells
@@ -14,10 +14,8 @@
 %     labels - n x 1 vector of cluster assignments
 %     G      - n x n sparse matrix representation of the (lower triangle)
 %              of the Jaccard graph used for community detection
-%     c      - cell array of Louvain hierarchies
-%     Q      - array of modularity scores for the corresponding partitions
 % -----------------------------------------------------------------------
-function [labels,G,c,Q] = phenograph( data, k, varargin )
+function [labels,communities,G] = phenograph( data, k, varargin )
 
 distance = 'euclidean';
 graphtype = 'jaccard';
@@ -67,12 +65,10 @@ Graph2Binary(G,'G')
 
 % Run Louvain on file for multiple iterations
 niter = 20;
-[c,Q,labels] = LouvainfromBin('G.bin',niter);
+[c,Q,labels,communities] = LouvainfromBin('G.bin',niter);
 
-llim = ceil(length(labels)./1e4);
+llim = max([ceil(length(labels)./1e4) 1]);
 labels = sortlabels(labels,llim);
-% Merge clusters based on data features
-% labels = postprocess( c, G, data, k );
 
 function c = sortlabels( c, cutoff )
 % c = sortlabels( c, cutoff )
@@ -101,7 +97,7 @@ function sl = sortlabs( labs, cutoff )
 i = 1;
 classSize = arrayfun(@(x) sum(labs==x), 1:max(labs));
 sl = zeros(size(labs));
-remove = sort( classSize < cutoff, 'ascend');
+remove = sort( classSize <= cutoff, 'ascend');
 [~,ix] = sort(classSize,'descend');
 ix(remove) = [];
 for assignment = ix

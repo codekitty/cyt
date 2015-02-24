@@ -1,4 +1,4 @@
-function [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = getOldData(data, inds, cluster_channel, meta_channel)
+function [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = compute_cluster_centroids(data, inds, cluster_channel)
 
 
     cluster_mapping = [];
@@ -28,7 +28,7 @@ function [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = getOldData(
     
     for i=1:size(inds,2), %looping through samples
         unique_clusters = unique(cluster_channel(inds{i}));
-        meta = meta_channel(inds{i});
+        meta = cluster_channel(inds{i});
         
         for j=1:length(unique_clusters),  %looping through unique clusters in sample
             meta_clusters = vertcat(meta_clusters, meta(find(cluster_channel(inds{i}) == unique_clusters(j), 1,'first')));
@@ -37,5 +37,11 @@ function [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = getOldData(
     
     cluster_mapping = horzcat(meta_clusters, cluster_mapping);
 
+    %cleaning the output
+    cluster_mapping(isnan(centroids(:,1)),:) = [];    %removing rows that correspond to clusters where centroid is NaN
+    centroids(isnan(centroids(:,1)),:) = [];  %removing rows with NaNs in centroids
+    centroids=centroids(find(cluster_mapping(:,1)),:); %removing rows with 0 in cluster number
+    cluster_mapping=cluster_mapping(find(cluster_mapping(:,1)),:);
+    
     
 end
