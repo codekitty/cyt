@@ -1,4 +1,4 @@
-function varargout = phenographGUI(varargin)
+function varargout = runPhenographGUI(varargin)
 % MATLAB code for create_meta.fig
 %      
 %
@@ -10,8 +10,8 @@ function varargout = phenographGUI(varargin)
 gui_Singleton = 1;
 gui_State = struct('gui_Name',       mfilename, ...
                    'gui_Singleton',  gui_Singleton, ...
-                   'gui_OpeningFcn', @create_metaGUI_OpeningFcn, ...
-                   'gui_OutputFcn',  @create_metaGUI_OutputFcn, ...
+                   'gui_OpeningFcn', @runPhenographGUI_OpeningFcn, ...
+                   'gui_OutputFcn',  @runPhenographGUI_OutputFcn, ...
                    'gui_LayoutFcn',  [] , ...
                    'gui_Callback',   []);
 if nargin && ischar(varargin{1})
@@ -26,7 +26,7 @@ end
 % End initialization code - DO NOT EDIT
 end
 % --- Executes just before interface is made visible.
-function create_metaGUI_OpeningFcn(hObject, eventdata, handles, varargin)
+function runPhenographGUI_OpeningFcn(hObject, eventdata, handles, varargin)
 % This function has no output args, see OutputFcn.
 % hObject    handle to figure
 % eventdata  reserved - to be defined in a future version of MATLAB
@@ -47,24 +47,15 @@ setappdata(0,'hwand',gcf);
 
 hgui=getappdata(0,'hwand');
 
-% Finding function inputs
-for i=1:length(varargin)-1        
-    
+% % Finding function inputs
+% for i=1:length(varargin)-1        
+%     
 %     if(strcmp(varargin{i}, 'title'))
-%         set(hObject, 'Name', varargin{i+1});
-    if(strcmp(varargin{i}, 'session_data'))
-      setappdata(0,'data', varargin{i+1});
-    
-     elseif(strcmp(varargin{i}, 'channelNames'))
-        set(handles.lstClusterChannel, 'String', varargin{i+1});
-         
-     elseif(strcmp(varargin{i}, 'gatesNames'))
-         set(handles.lstGates, 'String', varargin{i+1});
-         
-         elseif(strcmp(varargin{i}, 'gates'))
-         setappdata(0,'gates', varargin{i+1});
-    end
-end
+%         setappdata(0,'data', varargin{i+1});
+%     elseif(strcmp(varargin{i}, 'params'))
+% 
+%     end
+% end
 
 % Determine the position of the dialog - centered on the callback figure
 % if available, else, centered on the screen
@@ -111,7 +102,7 @@ set(handles.figure1,'WindowStyle','modal')
 uiwait(handles.figure1);
 end
 % --- Outputs from this function are returned to the command line.
-function varargout = create_metaGUI_OutputFcn(hObject, eventdata, handles)
+function varargout = runPhenographGUI_OutputFcn(hObject, eventdata, handles)
 % varargout  cell array for returning output args (see VARARGOUT);
 % hObject    handle to figure
 % eventdata  reserved - to be defined in a future version of MATLAB
@@ -158,54 +149,10 @@ end
 
 % --- Executes on button press in btnRun.
 function btnRun_Callback(hObject, eventdata, handles)
-    hgui=getappdata(0,'hwand');
-    handles=guihandles(hgui); % GUI handles to retrieve info from gui as below
-
-    session_data = getappdata(0,'data');   % all data  
-    gates = getappdata(0,'gates');   % get gates  
     
-    selected_gates    = get(handles.lstGates, 'Value'); % currently selected 
-    selected_channels = get(handles.lstClusterChannel, 'Value'); % ---------------
+    W=findMetaClusters;
+    handles.output =W;
     
-    k_neigh = str2num(get(handles.txtNeighbors, 'String'));
-% 
-%     nMetric = get(handles.pupMetric, 'Value');
-%     strMetrics = get(handles.pupMetric, 'String');
-%     W.metric = strMetrics{nMetric};
-%     W.all_channels = get(handles.lstClusterChannel, 'String');
-    
-    %something1 = zeros(length(IDX), numel(selected_gates));    
-    
-   matIndex = [];
-   matGates = [];
-   matSelGates= [];
-    
-    for i=1:numel(selected_gates)
-        %data = session_data(gates{selected_gates(i), 2}, selected_channels);
-        data = session_data(gates{selected_gates(i),2}, selected_channels);
-        
-        [IDX, ~] = phenograph(data, k_neigh);
-        matIndex(:, i) = IDX; 
-        matGates (:, i) = gates{selected_gates(i),2};
-        matSelGates (:, i) = selected_gates(i);
-        
-        %addChannels({'pheno'}, IDX, gates{selected_gates(i), 2}, selected_gates(i));
-    end
-    
-    W={matIndex, matGates, matSelGates};
-    
-    handles.output = W;
-    
-    return;  
-
-
-
-
-
-%     W = findMetaClusters;
-%         
-%     handles.output = W;
-
     % Update handles structure
     guidata(hObject, handles);
 
@@ -214,22 +161,14 @@ function btnRun_Callback(hObject, eventdata, handles)
     uiresume(handles.figure1);
 end
 
-
-% function W=findMetaClusters
-%     hgui=getappdata(0,'hwand');
-%     handles=guihandles(hgui);
-% 
-%     W.selected_gates = get(handles.lstGates, 'Value');
-%     W.cluster_channel = get(handles.lstClusterChannel, 'Value');
-%     W.neighbors = str2num(get(handles.txtNeighbors, 'String'));
-% 
-%     nMetric = get(handles.pupMetric, 'Value');
-%     strMetrics = get(handles.pupMetric, 'String');
-%     W.metric = strMetrics{nMetric};
-%     W.all_channels = get(handles.lstClusterChannel, 'String');
-%             
-%     
-% end
+function W=findMetaClusters
+    hgui=getappdata(0,'hwand');
+    handles=guihandles(hgui);
+    
+    W.method = get(handles.popCluserMethod, 'Value');    
+    W.neigh = get(handles.txtNeighbors, 'String');
+    W.nMetric = get(handles.pupMetric, 'Value');
+end
 
 % --- Executes on button press in btnCancel.
 function btnCancel_Callback(hObject, eventdata, handles)
@@ -270,7 +209,7 @@ end
 end
 
 
-function txtKNeighbors_Callback(hObject, eventdata, handles)
+function txtNeighbors_Callback(hObject, eventdata, handles)
 % hObject    handle to txtKNeighbors (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
@@ -280,7 +219,7 @@ function txtKNeighbors_Callback(hObject, eventdata, handles)
 end
 
 % --- Executes during object creation, after setting all properties.
-function txtKNeighbors_CreateFcn(hObject, eventdata, handles)
+function txtNeighbors_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to txtKNeighbors (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
@@ -292,42 +231,19 @@ if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgr
 end
 end
 
-% --- Executes on selection change in lstChannels.
-function lstChannels_Callback(hObject, eventdata, handles)
-% hObject    handle to lstChannels (see GCBO)
+% --- Executes on selection change in lstCluChannels.
+function popCluserMethod_Callback(hObject, eventdata, handles)
+% hObject    handle to lstCluChannels (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 
-% Hints: contents = cellstr(get(hObject,'String')) returns lstChannels contents as cell array
-%        contents{get(hObject,'Value')} returns selected item from lstChannels
+% Hints: contents = cellstr(get(hObject,'String')) returns lstCluChannels contents as cell array
+%        contents{get(hObject,'Value')} returns selected item from lstCluChannels
 end
 
 % --- Executes during object creation, after setting all properties.
-function lstChannels_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to lstChannels (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: listbox controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-end
-
-% --- Executes on selection change in lstChannels.
-function lstGates_Callback(hObject, eventdata, handles)
-% hObject    handle to lstGates (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: contents = cellstr(get(hObject,'String')) returns lstChannels contents as cell array
-%        contents{get(hObject,'Value')} returns selected item from lstGates
-end
-
-% --- Executes during object creation, after setting all properties.
-function lstGates_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to lstGates (see GCBO)
+function popCluserMethod_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to lstCluChannels (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 

@@ -37,7 +37,7 @@ function [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = compute_clu
     
     cluster_mapping = horzcat(meta_clusters, cluster_mapping);
 
-    %cleaning the output
+    %cleaning the output and ignoring cluster 0
     cluster_mapping(isnan(centroids(:,1)),:) = [];    %removing rows that correspond to clusters where centroid is NaN
     centroids(isnan(centroids(:,1)),:) = [];  %removing rows with NaNs in centroids
     centroids=centroids(find(cluster_mapping(:,1)),:); %removing rows with 0 in cluster number
