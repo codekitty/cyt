@@ -83,33 +83,35 @@ rng('shuffle');
 fn = fieldnames(Options);
 for j=1:length(fn)
     name = fn{j};
-    value = getfield(Options, name);
     
-    if     strcmpi(name,'metric')           G.Opts.metric = value;
-    elseif strcmpi(name,'k')                G.Opts.k = value;
-    elseif strcmpi(name,'l')                G.Opts.l = value;
-    elseif strcmpi(name,'num_graphs')       G.Opts.num_graphs = value;
-    elseif strcmpi(name,'s')                G.Opts.s = value;
-    elseif strcmpi(name,'num_landmarks')    G.Opts.num_landmarks = value;
-    elseif strcmpi(name,'verbose')          G.Opts.verbose = value;
-    elseif strcmpi(name,'branch')           G.Opts.branch = value;
-    elseif strcmpi(name,'partial_order')   	G.Opts.partial_order = value;
-    elseif strcmpi(name,'deblur')           G.Opts.deblur = value;
-    elseif strcmpi(name,'snn')              G.Opts.snn = value;
-    elseif strcmpi(name,'ann')              G.Opts.ann = value; %not supported yet
-    elseif strcmpi(name,'voting_scheme')    G.Opts.voting_scheme = value; 
-    elseif strcmpi(name,'band_sample')      G.Opts.band_sample = value; 
-    elseif strcmpi(name,'flock_landmarks')  G.Opts.flock_landmarks = value; 
-    elseif strcmpi(name,'plot_landmark_paths') G.Opts.plot_landmark_paths = value; 
-    elseif strcmpi(name,'plot_data')        G.Opts.plot_data = value; 
-    elseif strcmpi(name,'lnn')              G.Opts.lnn = value; 
-    elseif strcmpi(name,'landmarks')        G.Opts.landmarks = value; 
-    elseif strcmpi(name,'disallow')        G.Opts.disallow = value; 
-    elseif strcmpi(name,'search_connected_components') G.Opts.search_connected_components = value;
-    elseif strcmpi(name,'cell_clusters')         G.Opts.cell_clusters = value;
-    elseif strcmpi(name,'end_clusters')        G.Opts.end_clusters = value;
-    else   fprintf('Wanderlust.m: invalid option "%s" ignored.\n', name);
-    end
+    G.Opts.(deblank(name)) = Options.(deblank(name));
+    
+%     value = getfield(Options, name);
+%     if     strcmpi(name,'metric'),          G.Opts.metric = value;
+%     elseif strcmpi(name,'k'),               G.Opts.k = value;
+%     elseif strcmpi(name,'l'),               G.Opts.l = value;
+%     elseif strcmpi(name,'num_graphs'),      G.Opts.num_graphs = value;
+%     elseif strcmpi(name,'s'),               G.Opts.s = value;
+%     elseif strcmpi(name,'num_landmarks'),   G.Opts.num_landmarks = value;
+%     elseif strcmpi(name,'verbose'),         G.Opts.verbose = value;
+%     elseif strcmpi(name,'branch'),          G.Opts.branch = value;
+%     elseif strcmpi(name,'partial_order'),  	G.Opts.partial_order = value;
+%     elseif strcmpi(name,'deblur'),          G.Opts.deblur = value;
+%     elseif strcmpi(name,'snn'),             G.Opts.snn = value;
+%     elseif strcmpi(name,'ann'),             G.Opts.ann = value; %not supported yet
+%     elseif strcmpi(name,'voting_scheme'),   G.Opts.voting_scheme = value; 
+%     elseif strcmpi(name,'band_sample'),     G.Opts.band_sample = value; 
+%     elseif strcmpi(name,'flock_landmarks'), G.Opts.flock_landmarks = value; 
+%     elseif strcmpi(name,'plot_landmark_paths'), G.Opts.plot_landmark_paths = value; 
+%     elseif strcmpi(name,'plot_data'),       G.Opts.plot_data = value; 
+%     elseif strcmpi(name,'lnn'),             G.Opts.lnn = value; 
+%     elseif strcmpi(name,'landmarks'),       G.Opts.landmarks = value; 
+%     elseif strcmpi(name,'disallow'),        G.Opts.disallow = value; 
+%     elseif strcmpi(name,'search_connected_components'), G.Opts.search_connected_components = value;
+%     elseif strcmpi(name,'cell_clusters'),   G.Opts.cell_clusters = value;
+%     elseif strcmpi(name,'end_clusters'),    G.Opts.end_clusters = value;
+%     else   fprintf('Wanderlust.m: invalid option "%s" ignored.\n', name);
+%     end
 end
 
 G.Opts
@@ -345,7 +347,7 @@ for graph_iter = 1:G.Opts.num_graphs
 	end
 
 	% run traj. landmarks
-	[ traj, dist, iter_l, RNK,paths_l2l ] = trajectory_landmarks( klnn,data, G);
+	[ traj, dist, iter_l, RNK,paths_l2l, diffdists,Y] = trajectory_landmarks( klnn,data, G);
     
     % save output variables
     G.landmarks(graph_iter, :) = iter_l;
@@ -374,7 +376,7 @@ for graph_iter = 1:G.Opts.num_graphs
     W_full = W_full ./ repmat( sum( W_full ), size( W_full, 1 ), 1 );
         
     if (G.Opts.branch)
-        W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s), iter_l);
+        W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s), iter_l, Y);
     else
         W = W_full;
     end
@@ -403,7 +405,7 @@ for graph_iter = 1:G.Opts.num_graphs
 
         if (G.Opts.branch)
             [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, : ),data, iter_l, dist,paths_l2l, G.Opts);
-            W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s), iter_l);
+            W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s), iter_l,Y);
         end
        
         G.v(end+1) = compute_energy(t(end, iter_l), dist(:, iter_l));
@@ -460,10 +462,11 @@ end
 end
 
 
+% spdists = spdists_klnn( spdists, k, verbose )
+%
+% given a lNN graph spdists, choose k neighbors randomly out of l for each node
+% consider re-writing this using find on fll spdists and sparse to recreate
 function spdists = spdists_klnn( spdists, k, verbose )
-	% spdists = spdists_klnn( spdists, k, verbose )
-	%
-	% given a lNN graph spdists, choose k neighbors randomly out of l for each node
 
 	remove_edges = [];
 
@@ -485,22 +488,23 @@ function spdists = spdists_klnn( spdists, k, verbose )
 	end
 
 	spdists( remove_edges ) = 0;
-    end
+end
 
-	function [ traj, dist, l, RNK,paths_l2l, diffdists ] = trajectory_landmarks( spdists,data, G)
-	% [ traj, dist, l ] = trajectory_landmarks( spdists, s, n, verbose )
-	%
-	% calculate the trajectory score of each point in spdists.
-	%
-	% s: list of indices of possible starting points. one of these points will be used to generate a reference
-	% trajectory; the landmark shortest paths will be aligned to this reference.
-	% n: list of landmark indices to use; or, alternatively, the number of landmarks to choose randomly from all
-	% points.
-	%
-	% traj is a |n|x|spdists| matrix, where row i is the aligned shortest path from landmark i to each other point.
-	% dist is a |n|x|spdists| matrix, where row i is the shortest path from landmark i to each other point. l is
-	% the list of landmarks, l(1) is the starting point.
+% [ traj, dist, l ] = trajectory_landmarks( spdists, s, n, verbose )
+%
+% calculate the trajectory score of each point in spdists.
+%
+% s: list of indices of possible starting points. one of these points will be used to generate a reference
+% trajectory; the landmark shortest paths will be aligned to this reference.
+% n: list of landmark indices to use; or, alternatively, the number of landmarks to choose randomly from all
+% points.
+%
+% traj is a |n|x|spdists| matrix, where row i is the aligned shortest path from landmark i to each other point.
+% dist is a |n|x|spdists| matrix, where row i is the shortest path from landmark i to each other point. l is
+% the list of landmarks, l(1) is the starting point.
+function [ traj, dist, l, RNK,paths_l2l, diffdists,Y ] = trajectory_landmarks( spdists,data, G)
 
+    Y = [];
     RNK = zeros(size(data, 1), 1);
     n = G.Opts.num_landmarks;
 
@@ -518,17 +522,22 @@ function spdists = spdists_klnn( spdists, k, verbose )
         if (G.Opts.band_sample)
             n_opts = [];
             window_size = .1;
-            num_jumps_arr = cellfun(@(x)numel(x), paths);
-            max_jumps = max(num_jumps_arr);
             max_dist = max(dists);
             for prc = .998:-window_size:.08
                 band = find(dists>=(prc-window_size)*max_dist & dists <=prc*max_dist); % & num_jumps_arr >= floor((prc-.05)*max_jumps) & num_jumps_arr <= ceil(prc*max_jumps));
-                if length(band)> (n- 1 - length(G.Opts.partial_order))
-                    n_opts = [n_opts randsample( band, n - 1 - length(G.Opts.partial_order), true )];
-                end
+                n_opts = [n_opts randsample( band, min(length(band), n - 1 - length(G.Opts.partial_order)), false )];
             end
         end
         n = randsample( n_opts, n - 1 - length(G.Opts.partial_order) );
+        
+        % if branch - add 'tailk' landmarks from the tail (30 prc) of the data
+        if G.Opts.branch
+            tailk=10;
+            [dists, ~, ~] = graphshortestpath( spdists, G.Opts.s,'METHOD','Dijkstra', 'directed', true);
+            tailband = find( dists>=(prctile(dists, 70)) );
+            tailk = min([length(tailband), tailk, floor(length( n )/2)]); 
+            n(randsample( 2:length( n ), tailk)) = randsample( tailband, tailk);
+        end
         
         % flock landmarks 
         if (G.Opts.flock_landmarks > 0)
@@ -541,7 +550,7 @@ function spdists = spdists_klnn( spdists, k, verbose )
         end
     end
 
-    diffdists = repmat(0, length(n), length(n));
+    diffdists = zeros(length(n), length(n));
 
     partial_order = [G.Opts.s;G.Opts.partial_order(:)]; % partial_order includes start point
 	l = [ partial_order; n(:) ]; % add extra landmarks if user specified
@@ -713,41 +722,27 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
     % square matrix of the difference of perspectives landmark to landmark
     diffdists = abs(reported - proposed);
     diffdists = .5*(diffdists'+diffdists);
-    c = segmentlikemichealjordanwould(diffdists, [], []);
+%     c = segmentlikemichealjordanwould(diffdists);
 %     c = Opts.end_clusters(landmarks);
     
-    % show wine glass with clusterization
-%     [evec2, ~] = eig(diffdists);
+    % get second eigen vector of diifdists
     [EigenVecs, EigenVals] = GetEigs(diffdists, 2, [],struct('TakeDiagEigenVals',1));
     evec2 = EigenVecs(:, 2);
     [~, idx] = sort(evec2);
-%     figure('Color',[1 1 1]);
-%     scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*50, c(idx), '.');
     
-%     % show Q sorted by second eig vector, 
-%     figure('Color',[1 1 1]);
-%     subplot(1,2,1);
-%     imagesc(diffdists(idx,idx));
-%     
-%     % show Q sorted by tau, 
-%     subplot(1,2,2);
-%     [~, idx_time] = sort(t(landmarks));
-%     imagesc(diffdists(idx_time,idx_time));
+    % assign last positive 5 and last negative 5
+    t_l = t(landmarks);
+    b1_suspect = find(evec2<0); % suspects for branch 1
+    b2_suspect = find(evec2>0); % suspects for branch 2
     
+    [~, b1_sorted_inds] = sort(t_l(b1_suspect), 'descend');
+    [~, b2_sorted_inds] = sort(t_l(b2_suspect), 'descend');
     
+    c = ones(1, numel(landmarks));
+    c(b1_suspect(b1_sorted_inds(1:min(5, numel(b1_sorted_inds))))) = 2;
+    c(b2_suspect(b2_sorted_inds(1:min(5, numel(b2_sorted_inds))))) = 3;
     
-    % to pinpoint branch - look into the min (traj) of the paths from one cluster to the
-    % other
-    % Branch of the start cluster (Trunk)
-%     if (length(landmark_clusters) > 0 )
-%         table = tabulate(c(landmark_clusters == landmark_clusters(1)));
-%         trunk = table(table(:,2) == max(table(:,2)), 1);
-%         if (length(trunk) > 1)
-%             trunk = c(1);
-%         end
-%     else
 	trunk = c(1);
-%     end
 
     c_branch = setdiff(unique(c)', trunk); % the branch indices
     brancha = find(c==c_branch(1));
@@ -778,32 +773,40 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
     end
     
     % reassign to clusters based on branch point
-    pb = prctile(fork_p, 70);
+    pb = prctile(fork_p, 55);
     c_new = c;
     [~,I] = min(abs(dist(1:numel(landmarks), :)));
     RNK = c_new(I);
     c_new(t(landmarks)' <= pb) = c(1);
     c_new(evec2<0 & t(landmarks)' >= pb) = c_branch(1);
     c_new(evec2>0 & t(landmarks)' >= pb) = c_branch(2);
-%     reassign_landmarks = find(t(landmarks)' > pb & c_new == trunk);
-%     median1 = median(dist(reassign_landmarks, find(RNK == c_branch(1)))');
-%     median2 = median(dist(reassign_landmarks, find(RNK == c_branch(2)))');
-%     c_new(reassign_landmarks(median1 >= median2)) = c_branch(2);
-%     c_new(reassign_landmarks(median2 > median1)) = c_branch(1);
+
     e2 = evec2;
     timev = t(landmarks);
     Y = e2(I);
+    
+    % Compute affinity matrix over landmark distances
+    n = size(dist,2); % num points
+    sigma = .2*std(dist(:));
+    Aff = exp((-.5*(1/sigma^2)).*dist(:, setdiff(1:n, landmarks)).^2);
+    
+    % make aff matrix a stochastic operator
+    Stoch=columndiv(Aff, sum(Aff));
+    Y = zeros(1,n);
+    Y(landmarks) = e2;
+    Y(setdiff(1:n, landmarks))=Stoch'*e2(:);
+    
     if (Opts.plot_landmark_paths && (Opts.plot_debug_branch || numel(unique(c_new))<3))
 
         figure('Color',[1 1 1]);
         
         subplot(2,2,1);       
         scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*150, c(idx), '.');
-        title('MJ');
+        title('Initial segmentation');
 
         subplot(2,2,2);       
         scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*150, c_new(idx), '.');
-        title(sprintf('After BP=%g', pb));
+        title(sprintf('BP ident @ tau=%g', pb));
 
         subplot(2,2,3);
         scatter(Opts.plot_data(:,1),Opts.plot_data(:,2),...
@@ -816,7 +819,6 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
             ones(numel(landmarks(c==2)),1)*50, 'or');
         scatter(Opts.plot_data(landmarks(c==3),1),Opts.plot_data(landmarks(c==3),2),...
             ones(numel(landmarks(c==3)),1)*50, 'og');
-        title('MJ');
         
         subplot(2,2,4);
         scatter(Opts.plot_data(:,1),Opts.plot_data(:,2),...
@@ -829,7 +831,6 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
             ones(numel(landmarks(c_new==2)),1)*50, 'or');
         scatter(Opts.plot_data(landmarks(c_new==3),1),Opts.plot_data(landmarks(c_new==3),2),...
             ones(numel(landmarks(c_new==3)),1)*50, 'og');
-        title('bp');
        
         % show Q sorted by second eig vector, 
         figure('Color',[1 1 1]);
@@ -851,7 +852,7 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
         drawnow;
        	ax = gca;
         ax.YTickLabel = cellfun(@num2str, num2cell(c(idx_time)), 'UniformOutput', false);
-        title('sorted by wanderlust');
+        title('sorted by tau');
         colormap jet
         drawnow;
     end
@@ -859,7 +860,7 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
 %     figure('Color',[1 1 1]);
 %     scatter(evec2,t(landmarks), ones(size(evec2))*50, c_new);
     
-    % what do we get if we michal jordan the wine glass instead?
+    % what do we get if we michael jordan the wine glass instead?
 %     figure('Color',[1 1 1]);
 %     c_glass = segmentlikemichealjordanwould([(evec2-mean(evec2))/std(evec2) (trajs(1,landmarks)-mean(trajs(1,landmarks)))'/(std(trajs(1,landmarks))^2)]);
 %     scatter(evec2(idx),trajs(1,landmarks(idx)), ones(size(evec2))*50, c_glass(idx));
@@ -872,7 +873,7 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
     RNK = c_new(I);
 end
 
-function c=segmentlikemichealjordanwould(data, clusters, end_clusters)
+function c=segmentlikemichealjordanwould(data)
     sigma = prctile(data(:), 97);
 
     % form affinity matrix with gaussian eucliean distance
@@ -907,24 +908,44 @@ function plot_landmark_paths(data, paths, l)
     drawnow;
 end
 
-function W=muteCrossBranchVoting(W, RNK, trunk_id, landmarks)
-    % grab branch cluster labels
-    branch_ids = setdiff(unique(RNK)', trunk_id);
+function W=muteCrossBranchVoting(W, RNK, trunk_id, landmarks, Y)
 
-    % if we have indeed 2 branches
-    if numel(branch_ids) == 2
+    % range between -1 and 1
+    Y_scale = Y-median(Y(landmarks));
+    Y_scale(Y_scale<0) = Y_scale(Y_scale<0)./max(abs((Y_scale(Y_scale<0))));
+    Y_scale(Y_scale>0) = Y_scale(Y_scale>0)./max(Y_scale(Y_scale>0));
+    Y_pos = abs(Y_scale)';
 
-        % mute voting weight between one branch to the other
-        W(ismember(landmarks,find(RNK==branch_ids(1))), RNK==branch_ids(2)) = 0;
-        W(ismember(landmarks,find(RNK==branch_ids(2))), RNK==branch_ids(1)) = 0;
+    W_test= W;
+    b=std(Y_scale);
+    for i=1:numel(Y)
+        crossb = sign(Y_scale(i))~=sign(Y_scale(landmarks));
+        W_test(crossb, i) = W(crossb,i).*...
+                                max(exp(-.5*(Y_pos(i).^2)./b),...
+                                    exp(-.5*(Y_pos(landmarks(crossb)).^2)./b));
+    end   
+    W = columndiv(W_test, sum( W_test ));
+    
+%     i = 47649 
+%     [W(:,i) W_test(:, i) Y_scale(landmarks)' Y_scale(i)*ones(length(landmarks),1)]
 
-        % make W column stochastic (weighted average per landmark)
-        W = W ./ repmat( sum( W ), size( W, 1 ), 1 );
-
-    % otherwise, print warning
-    else 
-        fprintf( 'warning: no branch found');
-    end
+%     % grab branch cluster labels
+%     branch_ids = setdiff(unique(RNK)', trunk_id);
+% 
+%     % if we have indeed 2 branches
+%     if numel(branch_ids) == 2
+% 
+%         % mute voting weight between one branch to the other
+%         W(ismember(landmarks,find(RNK==branch_ids(1))), RNK==branch_ids(2)) = 0;
+%         W(ismember(landmarks,find(RNK==branch_ids(2))), RNK==branch_ids(1)) = 0;
+% 
+%         % make W column stochastic (weighted average per landmark)
+%         W = W ./ repmat( sum( W ), size( W, 1 ), 1 );
+% 
+%     % otherwise, print warning
+%     else 
+%         fprintf( 'warning: no branch found');
+%     end
 end
 
 function v=compute_energy(tau, D)

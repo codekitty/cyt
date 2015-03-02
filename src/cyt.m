@@ -220,6 +220,7 @@ function save_session
 sessionData = retr('sessionData');
 gates = retr('gates');
 regexps = retr('regexps');
+auxInfos = retr('auxInfos');
 if (isempty(sessionData)) 
     uiwait(msgbox('The session is empty.','Nothing to save','modal'));
     return;
@@ -231,7 +232,7 @@ if isequal(filename,0) || isequal(pathname,0)
     return;
 end
 
-save([pathname filename], 'sessionData', 'gates', 'regexps'); 
+save([pathname filename], 'sessionData', 'gates', 'regexps', 'auxInfos'); 
 %save([pathname filename], 'sessionData', 'gates', 'regexps', '-v7.3'); %alternative for data > 2GB
 
 end
@@ -285,6 +286,12 @@ if exist('regexps', 'var')
             set(handles.lstRegexps, 'String', old_regexps(:, 1));
         end
     end
+end
+
+if exist('auxInfos', 'var')
+	put('auxInfos', auxInfos);  
+else
+	put('auxInfos', {});  
 end
 
 % make sure axis popups are visible and filled out
@@ -711,8 +718,7 @@ end
 function plotChannels_Callback(~, ~, handles)
     
     % disable gating functionality
-    set(handles.btnGatePoly, 'Enable', 'off');
-    set(handles.btnGateRect, 'Enable', 'off');
+    enableGating(handles, 'off');
     set(handles.btnPickCluster, 'Enable', 'off');
     
     clusterFlag=get(handles.btnCluster,'Value');
@@ -1049,7 +1055,8 @@ function plot_along_time(time_channel)
     if normalizeX
         % display wonderlust results
         arrWonderlust = arrWonderlust-min(arrWonderlust);
-        arrWonderlust = arrWonderlust./prctile(arrWonderlust, 95);
+%         arrWonderlust = arrWonderlust./prctile(arrWonderlust, 95);
+        arrWonderlust = arrWonderlust./max(arrWonderlust);
         arrWonderlust(arrWonderlust>1) = 1;
     end
     branch = any(strfind(channel_names{time_channel+1}, 'branch'));
@@ -1258,8 +1265,7 @@ function plot_cluster_tsne
     handles = gethand; 
     
     %enable the gating btns in the main tool bar
-    set(handles.btnGatePoly, 'Enable', 'on');
-    set(handles.btnGateRect, 'Enable', 'on');
+    enableGating(handles, 'on');
     set(handles.btnPickCluster, 'Enable', 'on');
     
        
@@ -3130,6 +3136,7 @@ end
 
 function enableGating(handles, state)
     set(handles.btnGatePoly, 'Enable', state);
+    set(handles.btnGateEllipse, 'Enable', state);
     set(handles.btnGateRect, 'Enable', state);   
 end
 
@@ -3348,8 +3355,11 @@ function runTSNE(normalize)
                      'Yes','No','Yes');
     	normalize= strcmp(selection,'Yes');
     end
-    if normalize  
+    if false  
         data = mynormalize(data, 'percentile', 99);      
+    end
+    if normalize 
+        disp 'warning!! normalize not supported for tsne\n';
     end
 
 %     new_selected_channels = selected_channels(prctile(data, 99) >= 2.2);
@@ -3368,13 +3378,47 @@ function runTSNE(normalize)
         new_channel_names{i} = sprintf('bh-SNE%g', i);
     end
 
-    addChannels(new_channel_names, map, gate_context);
-
+    [vg, vc]=addChannels(new_channel_names, map, gate_context);
+    
+    auxInfo.what = 'tsne';
+    auxInfo.channels = selected_channels;
+    
+    addAuxInfo(vg, vc, auxInfo);
+    
 	waitbar(1,hwaitbar, 'Done.');
     
     close(hwaitbar);
 	setStatus('Done.');
     
+end
+
+% save auxilary info associated with specified channels in specified gates.
+function addAuxInfo(vg, vc, auxInfo)
+    
+    % retrieve the gates
+    gates = retr('gates');
+    
+    % retrieve auxinfo var
+    auxInfos = retr('auxInfos');
+    if isempty(auxInfos)
+        auxInfos = {};
+    end
+    auxInfos{end+1} = auxInfo;
+    infoind = length(auxInfos);
+    
+    % add the auxinfo index to the gate at specified channels
+    for i=vg
+        if size(gates, 2) < 5
+            gates{i, end+1} = [];
+        end
+        vec = gates{i, 5};
+        vec(vc) = infoind;
+        gates{i, 5} = vec;
+    end
+    
+    % save the info and the gates 
+    put('gates', gates);
+    put('auxInfos', auxInfos);
 end
 
 function runWanderlust
@@ -3520,24 +3564,28 @@ function runWanderlust
              
         % save results
         if(params.branch)
+            vc=[];
             for r=1:size(G.T,1)
-                addChannels({sprintf('wander-branch%g', r),...
+                [vg, vci] = addChannels({sprintf('wander-branch%g', r),...
                                 sprintf('branch%g', r),...
                                 sprintf('Y%g', r)},...
                             [G.T(r,:)' G.B(r, :)' G.Y(r,:)'],...
                             gate_context);
+                vc = [vc(:)' vci(:)'];
+                auxInfo.what = 'wonderbranch';
             end
-%             addChannels({'twod1','twod2'},...
-%                         [G.twod(:,1) G.twod(:, 2)],...
-%                         gate_context(G.landmarks));
         else
 %             traj = mean(G.T, 1);
 %             traj = traj';
-%             addChannels({'wanderlust'}, traj, gate_context);
-%             traj = mean(G.T, 1);
+%             [vg, vc] = addChannels({'wanderlust'}, traj, gate_context);
             traj = G.T';
-            addChannels(strcat({'wanderlust '},int2str((1:size(traj,2)).'))', traj, gate_context);
+            [vg, vc] = addChannels(strcat({'wanderlust '},int2str((1:size(traj,2)).'))', traj, gate_context);
+            auxInfo.what = 'wonderlust';
         end
+        auxInfo.channels = selected_channels;
+        auxInfo.params = params;
+
+        addAuxInfo(vg, vc, auxInfo);
     catch e
         fprintf('Wanderlust failed: %s', getReport(e,'extended'));
         uiwait(msgbox(sprintf('Wanderlust failed: %s', getReport(e,'basic')),...
@@ -3600,14 +3648,23 @@ function runLouvain(handles)
 	setStatus('Done.');
 end
 
+% params
 % new_channels_names - 1XN Cell array of strings
 % new_data           - MXN data matrix
 % opt_gate_context   - opt: SessionData indices. Default is gateContext
 % opt_gates          - opt: the gate index to add the channel name on to.
-function addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
+% 
+% returns 
+%       affected_g - vector of gate indices which were affected
+%       affected_c - vector of column indices which were affected
+function [affected_g, affected_c]=addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
     handles = gethand;
 
-    % set variables
+    % init return variables
+    affected_g=[];
+    affected_c=[];
+    
+    % get variables
     sessionData  = retr('sessionData');
     gates        = retr('gates');    
 
@@ -3647,7 +3704,7 @@ function addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
     if (size(sessionData,2)-undef_channel_ind >= 0) && ...
         any(~any(sessionData(gate_context, undef_channel_ind:end)))
         
-        % find a streak the same width of new_data of empty columns
+        % find a streak of empty columns the same width of new_data 
         d = diff([false any(sessionData(gate_context, undef_channel_ind:end)) == 0 ones(1, size(new_data, 2)) false]);
         p = find(d==1);
         m = find(d==-1);
@@ -3669,6 +3726,7 @@ function addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
         end
         channel_names(end+1:end+numel(new_channel_names)) = new_channel_names(:);
         gates{i, 3} = channel_names;
+        affected_g(end+1) = i;
     end
     
     n_new_columns = size(new_data, 2) - (size(sessionData,2) - last_def_channel);
@@ -3680,8 +3738,9 @@ function addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
     end
     
     % set new data to session
-    sessionData(gate_context, last_def_channel+1:last_def_channel+size(new_data, 2)) = new_data;    
-
+    columns = last_def_channel+(1:size(new_data, 2));
+    sessionData(gate_context, columns) = new_data;
+    affected_c = columns;
     
     put('sessionData', sessionData);
     put('gates', gates);
@@ -3807,8 +3866,7 @@ function btnGate_ClickedCallback(~, ~, ~, isPoly)
     end
     
     %disabel the btns
-    set(handles.btnGatePoly, 'Enable', 'off');
-    set(handles.btnGateRect, 'Enable', 'off');
+    enableGating(handles, 'off');
     set(handles.btnPickCluster, 'Enable', 'off');
     
     sessionData  = retr('sessionData');
@@ -3899,9 +3957,7 @@ function btnGate_ClickedCallback(~, ~, ~, isPoly)
         end
     end
     
-    set(handles.btnGatePoly, 'Enable', 'on');
-    set(handles.btnGateRect, 'Enable', 'on');
-    
+    enableGating(handles, 'on');
 end
 
 function btnGateVal_Callback
@@ -5638,32 +5694,6 @@ function kmeansEach
 
 end
 
-
-% ------------
-% Run Phenograph on different gates, channels, K and distance matric in a
-% new window.
-% !!! Not ready for use - need to add channel by getting the output from
-% phenographGUI. !!!
-% ------------
-
-function runPhenograph
-    handles = gethand;
-    
-    gates        = retr('gates');
-    sessionData  = retr('sessionData');
-    gate_context = retr('gateContext');
-    selected_channels = get(handles.lstChannels,'Value');
-    gate_names        = get(handles.lstGates, 'String');
-    selected_gates = get(handles.lstGates, 'Value');
-    [~, channel_names] = getSelectedIndices(selected_gates);
-    
-    phenographGUI('session_data',sessionData,'gates',gates, 'gatesNames', gate_names, 'channelNames', channel_names);
-    
-    
-end
-
-
-
 % ------------
 % compare between two maps
 % ------------
@@ -5691,28 +5721,47 @@ function openEndedAction
     gates         = retr('gates'); % all gates (names\indices) in cell array
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
-    a = 1;
     
+    %% diffusion map
     data = session_data(gate_context, selected_channels);
-     
-    GraphDiffOpts = struct( ...
-    'Normalization','smarkov', ...
-    'Epsilon',1, ...
-    'kNN', 15, ...
-    'kEigenVecs', 20, ...
-    'Symmetrization', 'W+Wt', ...
-    'DontReturnDistInfo', 1); ...
-%     'Distance', 'cov');
-%     'kNNAutotune', 200, ...
+    kev = 15;
+    GraphDiffOpts = struct( 'Normalization','smarkov', ...
+                            'Epsilon',1, ...
+                            'kNN', 15, ...
+                            'kEigenVecs', kev, ...
+                            'Symmetrization', 'W+Wt'); ...
 
-    GraphDiffOpts.DontReturnDistInfo=0;
-    G = GraphDiffusion(data', 0, GraphDiffOpts);  
-   
-    addChannels(strcat({'e'},int2str((2:20).'),int2str(G.EigenVals(2:20)))',...
-                G.EigenVecs(:, 2:20));
+    GD = GraphDiffusion(data', 0, GraphDiffOpts);
+    C = mat2cell([2:kev; GD.EigenVals(2:kev)']',ones(kev-1, 1));
+    [vg, vc] = addChannels( cellfun(@(x)sprintf('E%g (%2.2f)', x), C, 'UniformOutput', false),...
+                 GD.EigenVecs(:, 2:kev));
+             
+    auxInfo.what = 'Diffusion Map';
+    auxInfo.channels = selected_channels;
+    auxInfo.params = GraphDiffOpts;
+    
+    addAuxInfo(vg, vc, auxInfo);
 
 	return;
-   %% create shortcut
+    
+	%% reduce session data to current independant gates
+    new_sd = session_data([gates{1, 2}(:); gates{2, 2}(:); gates{3, 2}(:)], :);
+    gates{1, 2} = 1:numel(gates{1, 2});
+    gates{2, 2} = (1:numel(gates{2, 2}))+numel(gates{1, 2});
+    gates{3, 2} = (1:numel(gates{3, 2}))+numel(gates{1, 2})+numel(gates{2, 2});
+    put('gates', gates);
+    put('sessionData', new_sd);
+    return;
+
+    %% tsneEach
+    for gi=1:numel(selected_gates)
+        set(handles.lstGates, 'Value', selected_gates(gi)); % currently selected 
+        lstGates_Callback;
+        runTSNE(false);
+    end
+    return;
+
+   %% create testing shortcut on cellcycle repo dataset
 %     new_data = 50:4:70;
 %     new_data = new_data';
 %     new_data = [new_data, 210+ randn(size(new_data))*20];
@@ -5727,13 +5776,6 @@ function openEndedAction
 %     return;
     
   return;
-
-    for gi=1:numel(selected_gates)
-        set(handles.lstGates, 'Value', selected_gates(gi)); % currently selected 
-        lstGates_Callback;
-        runTSNE(false);
-    end
-    return;
     
     %% find clusters that are associated with unwanted gated data
     all_data = session_data(gates{selected_gates(1), 2}, selected_channels);
