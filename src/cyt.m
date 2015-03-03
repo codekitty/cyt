@@ -772,7 +772,7 @@ function plotChannels_Callback(~, ~, handles)
 
     
     % Invoke the selected plot function
-    plotBynSelected{idxSelectedPlotType, 2}();
+    plotBynSelected{idxSelectedPlotType, 2}(); 
 
     % Save selected gates, channels, and plot type
     put('inMainPlot', false);
@@ -1366,8 +1366,8 @@ function plot_cluster_tsne
         end
     end
     catch e
-        msgbox(sprintf(['There is a problem with running tSNE on those clusters.\n'...
-                        'Check if the path of cyt is legal or choose more data.']),'Error','error');  
+        msgbox(sprintf(['tSNE Fails: There is a problem with generating tSNE from this N clusters.\n'...
+                        'Possible causes are inssuficient number of points or illegal cyt installation path.']),'Error','error');  
         return;
     end
     %finding color channel
@@ -1385,13 +1385,13 @@ function plot_cluster_tsne
         if (length(unique(tsne_col))>34)
             uiwait(msgbox('The colors repeat themselves because there are too many points.','Too many points','warn'));
         end
-    elseif color_chan == cluster_channel, %color by clusters
-        tsne_col = cluster_mapping(:,1);
-        scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size+31); %plotting
-        groups = unique(tsne_col);
-        legend(cellfun(@num2str, num2cell(groups), 'UniformOutput', false), 'Interpreter', 'none');
+%     elseif color_chan == cluster_channel, %color by clusters
+%         tsne_col = cluster_mapping(:,1);
+%         scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size+31); %plotting
+%         groups = unique(tsne_col);
+%         legend(cellfun(@num2str, num2cell(groups), 'UniformOutput', false), 'Interpreter', 'none');
     else
-        if isDiscrete(color_chan) %color by cluster (meta)
+        if isDiscrete(color_chan) %color by cluster (or meta)
             data_col=session_data(gate_context, color_chan);
             tsne_col=zeros(length(centroids),1);
             
@@ -1399,19 +1399,29 @@ function plot_cluster_tsne
             for i=1:length(centroids)
                 cluster=cluster_mapping(i,1); % the original cluster of index i in the centroids
                 sel_gates=cluster_mapping(i,3); %the gate in index i in the centroids
-                indicesOfGateI=gates{sel_gates,2}; % indices of gate i in the data
+                indicesOfGateI=gates{selected_gates(sel_gates),2}; % indices of gate i in the data
                 cellsOfGateIandCluster=[session_data(indicesOfGateI,cluster_channel)==cluster]; %the cells with the wanted gate and cluster
                 IndCellsOfGateIandCluster= indicesOfGateI(cellsOfGateIandCluster); %their indices
                 
                 tsne_col(i)=session_data(IndCellsOfGateIandCluster(1),color_chan);
             end
             
+            %Ignoring cluster 0 after comuting the the Meta clusters
+            tSNE_out=tSNE_out(find(tsne_col),:);
+            dot_size=dot_size(find(tsne_col),:);
+            tsne_col=tsne_col(find(tsne_col));
+
             metaClusters=tsne_col;
             
             %Plotting
             scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size+31); %plotting
-
-            groups = [repmat('MC ', length(unique(tsne_col)), 1), num2str(unique(tsne_col))];
+            
+            check=strfind(channel_names(color_chan),'meta');
+            if ~isempty(check{1,1})
+                groups = [repmat('MC ', length(unique(tsne_col)), 1), num2str(unique(tsne_col))];
+            else
+                groups = [repmat('Cluster ', length(unique(tsne_col)), 1), num2str(unique(tsne_col))];
+            end
             legend({groups},'Interpreter', 'none');%display legend 1
 
             if (length(unique(tsne_col))>34)
@@ -1430,8 +1440,10 @@ function plot_cluster_tsne
             tsne_col(tsne_col < quantile(tsne_col, 0.05)) = quantile(tsne_col,0.05);
             tsne_col(tsne_col > quantile(tsne_col, 0.95)) = quantile(tsne_col, 0.95);
             colormap(jet(40));
-            scatter(tSNE_out(:,1),tSNE_out(:,2), dot_size, tsne_col, 'fill');
+            scatter(tSNE_out(:,1),tSNE_out(:,2), (dot_size+31), tsne_col, 'fill');
             colorbar;
+            color_chan_names = get(handles.lstTsneColorBy,'String'); 
+            title(color_chan_names(color_chan));
         end
     end
 
@@ -1515,7 +1527,7 @@ function cluster_heat_map(cluster,gate,output_txt)
     
     %finding mean values of marker levels for each cluster
     marker_means = zeros(1, length(selected_channels));
-    data = session_data(gate_context, selected_channels);
+    data = session_data(gates{gate,2}, selected_channels);
     marker_means(1,:) = mean(data(session_data(gates{gate,2}, cluster_channel)==cluster,:),1);
     
     %Plotting
@@ -1531,7 +1543,16 @@ function cluster_heat_map(cluster,gate,output_txt)
 
     hold(hPlot,'on');
     
-    h = text(1:length(selected_channels),1.5*ones(1,length(selected_channels)),channel_names(selected_channels),'Parent', hPlot);
+    names=channel_names(selected_channels);
+    for i=1:numel(names)
+       name=names{i};
+       if numel(name)>8
+        name=name(1:8);
+        name = strcat(name,'...')
+       end
+       names{i}=name;
+    end
+    h = text(1:length(selected_channels),1.5*ones(1,length(selected_channels)),names,'Parent', hPlot);
     set(h, 'rotation', 90);
 
 end
@@ -1632,16 +1653,25 @@ function btnMergeCluster_Callback(~, ~, ~)
                                session_data(gate_context, cluster_channel)); 
     
     if length(userChoise)>1
-        if length(unique(cluster_mapping(userChoise,3)))>1
-            check=strfind(channel_names(cluster_channel),'Each')
-            if ~isempty(check{1,1})
-                msgbox(sprintf(['You are not allows to merge clusters in different\n'...
-                                'gates when they were created separately']),'Error','error');  
+        len=length(unique(cluster_mapping(userChoise,3)));
+        if len>1
+            clu_channel={};
+            gate2merge=selected_gates(unique(cluster_mapping(userChoise,3)));
+            for i=1:len
+                channels=gates{gate2merge(i),3};
+                clu=channels(cluster_channel);
+                clu_channel{end+1}=clu{1,1};
+            end
+%             check=strfind(channel_names(cluster_channel),'Each');
+            if length(unique(clu_channel))>1
+%             if ~isempty(check{1,1})
+                msgbox(sprintf(['You are not allowed to merge clusters from different\n'...
+                                'gates when they were created separately.']),'Error','error');  
                 return;
             end
         end
     else
-        msgbox(sprintf('You must choose at least two clusters for merging'),'Error','error');  
+        msgbox(sprintf('You must choose at least two clusters for merging.'),'Error','error');  
         return;  
     end                                       
                            
@@ -3890,7 +3920,7 @@ function btnGate_ClickedCallback(~, ~, ~, isPoly)
         tSNE_out = [];
         if (isempty(tSNE_out)),
             if (size(centroids, 1) > 10)
-                tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
+                tSNE_out = fast_tsne(centroids);    %running tSNE on centroids
             else
                 tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
             end
@@ -5588,8 +5618,6 @@ end
 function phenoEach
     handles = gethand;
     
-    
-    
     gates        = retr('gates');
     session_data  = retr('sessionData');
     gate_context = retr('gateContext');
@@ -5637,33 +5665,61 @@ function phenoEach
             distance = 'mahalanobis';     
     end
 
+    allClusters=[];
+    
     if mehtod==1        
-        maxIDX=0;
+        maxClu=0;
+        uniqueID={};
+        channelName=[];
         for i=1:numel(selected_gates)
             data = session_data(gates{selected_gates(i), 2}, selected_channels);
 
-            [IDX, ~] = phenograph(data, k_neigh,'distance',distance);
-
-            IDX=IDX(find(IDX))+maxIDX;
-            maxIDX=max(IDX);
-
-            channelName=['PhenoGraphEachK' num2str(k_neigh)];
-            addChannels({channelName}, IDX, gates{selected_gates(i), 2}, selected_gates(i));
+            [clusterLable,~,~,ID] = phenograph(data, k_neigh,'distance',distance);
+            
+            uniqueID{end+1}=ID;
+            clusterLable(find(clusterLable))=clusterLable(find(clusterLable))+maxClu;
+            maxClu=max(clusterLable);
+            
+            allClusters=[allClusters;clusterLable];
+            
+            
         end
 
+        %Giving a temporary name to the channel 
+        addChannels({'newChannelCluster'}, allClusters, gate_context, selected_gates);
+        gates        = retr('gates');
+        
+        %Changing the channels name by the unique ID
+        for i=1:numel(selected_gates)
+            gate=selected_gates(i);
+            ch_names=gates{gate,3};
+            channelName=['PhenoGraph Each K' num2str(k_neigh) ' ' uniqueID{i}];
+            Index = strfind(ch_names, 'newChannelCluster');
+            Index = find(not(cellfun('isempty', Index)));
+            
+            if numel(Index)>1
+                Index=Index(numel(Index));
+            end
+            
+            ch_names{1,Index}=channelName;
+            gates{gate,3}=ch_names;
+            
+        end
+        
+        put('gates', gates);
+        lstGates_Callback;
         return;  
     else
         data = session_data(gate_context, selected_channels);
 
-        [IDX, ~] = phenograph(data, k_neigh,'distance',distance);
+        [clusterLable,~,~,ID] = phenograph(data, k_neigh,'distance',distance);
 
-        channelName=['PhenoGraphK' num2str(k_neigh)];
-        addChannels({channelName}, IDX, gate_context);
+        channelName=['PhenoGraph K' num2str(k_neigh) ' ' ID];
+        addChannels({'channelName'}, allClusters, gate_context);
     end
-
 end
 
-                                                                       
+                                                                      
 function kmeansEach
     handles = gethand; % GUI handles to retrieve info from gui as below
 
@@ -5677,7 +5733,7 @@ function kmeansEach
  
     for i=1:numel(selected_gates)
         k_clusters = 4;
-        addChannels({'kmeans4'}, kmeans(session_data(gates{selected_gates(i), 2}, selected_channels), k_clusters,'Display', 'iter', 'EmptyAction', 'singleton'), gates{selected_gates(i), 2}, selected_gates(i));
+        addChannels({'kmeansEach4'}, kmeans(session_data(gates{selected_gates(i), 2}, selected_channels), k_clusters,'Display', 'iter', 'EmptyAction', 'singleton'), gates{selected_gates(i), 2}, selected_gates(i));
     end
     
     return;  

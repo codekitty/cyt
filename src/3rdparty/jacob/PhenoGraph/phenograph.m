@@ -15,7 +15,7 @@
 %     G      - n x n sparse matrix representation of the (lower triangle)
 %              of the Jaccard graph used for community detection
 % -----------------------------------------------------------------------
-function [labels,communities,G] = phenograph( data, k, varargin )
+function [labels,communities,G,uniqueID] = phenograph( data, k, varargin )
 
 distance = 'euclidean';
 graphtype = 'jaccard';
@@ -69,6 +69,9 @@ niter = 20;
 
 llim = max([ceil(length(labels)./1e4) 1]);
 labels = sortlabels(labels,llim);
+
+%generate unique id 
+uniqueID = genarateID;
 
 function c = sortlabels( c, cutoff )
 % c = sortlabels( c, cutoff )

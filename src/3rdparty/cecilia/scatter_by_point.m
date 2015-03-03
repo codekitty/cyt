@@ -44,6 +44,9 @@ function scatter_by_point(x, y, gcolors, dot_size)
 %        end
     end
     
+    %Add contour to plot
+    %plotContour(x, y);
+    
 	% find axis limits
     x_range  = max(x)-min(x);
     x_buffer = x_range*.03;
@@ -55,4 +58,21 @@ function scatter_by_point(x, y, gcolors, dot_size)
 
     xlim(x_lim);
     ylim(y_lim);
+end
+
+
+%Add contour to plot
+function plotContour(x1, x2)
+    [~, density, x, y] = kde2d([x1, x2], 64);
+    hold on;
+%         cmap = jet;
+%         cmap(1, :) = [1, 1, 1];
+%         colormap(cmap);
+    cmap=[0,0,0];
+    colormap (cmap);
+   
+    contour(x, y, density, 8 );
+    
+    hold off;
+
 end
