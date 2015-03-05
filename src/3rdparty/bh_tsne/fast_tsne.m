@@ -71,12 +71,12 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
 
         if (fileCheck==0) %no file
             mapMat = containers.Map(); % hash map for matrix name and tsne output
-            hashMat= DataHash(X+perplexity); %getting the  matrix hash
+            hashMat= DataHash(X+perplexity+theta); %getting the  matrix hash
         else
             file= load('tsneResults.mat'); %loading the old tsne results
             mapMat=file.mapMat;
 
-            hashMat= DataHash(X+perplexity); %getting the  matrix hash
+            hashMat= DataHash(X+perplexity+theta); %getting the  matrix hash
             check = isKey(mapMat,hashMat); %check for key in the hash map
 
             if (check==1) %no need to run tsne again->returning old result
