@@ -30,7 +30,7 @@ function plot_as_function(x, Y, varargin)
 % 
 % Michelle Tadmor, Columbia University, 2013-2015
 
-Markers={'--','-.', ':'};
+Markers={'--','-', ':'};
 
 clear persistent_ksdensity;
 legend_flag = false;
@@ -95,51 +95,51 @@ cachefilename = [curr_path 'cachePlotAlongTimeResults.mat'];
 fileCheck = exist (cachefilename, 'file');
 
 % if no file
-if (fileCheck==0) 
-    % create new hash map
-    mapMat = containers.Map(); 
-else
-    try
-        % loading the old weights results
-        file = load(cachefilename); 
-        mapMat=file.mapMat;
-    catch
-        fileCheck=0;
-        % create new hash map
-        mapMat = containers.Map(); 
-    end
-end
-
-% check for key in the hash map
-check = isKey(mapMat,hashVal); 
-
-% if weights found in cache
-if (check==1) 
-    % no need to run lnn again->returning old result
-    value=values(mapMat,{hashVal});
-    W = value{1};
-    weights= W.weights;
-    weights_win = W.weights_win;
-    fprintf('weights loaded from cache: %gs\n', toc);
-else
+% if (fileCheck==0) 
+%     % create new hash map
+%     mapMat = containers.Map(); 
+% else
+%     try
+%         % loading the old weights results
+%         file = load(cachefilename); 
+%         mapMat=file.mapMat;
+%     catch
+%         fileCheck=0;
+%         % create new hash map
+%         mapMat = containers.Map(); 
+%     end
+% end
+% 
+% % check for key in the hash map
+% check = isKey(mapMat,hashVal); 
+% 
+% % if weights found in cache
+% if (check==1) 
+%     % no need to run lnn again->returning old result
+%     value=values(mapMat,{hashVal});
+%     W = value{1};
+%     weights= W.weights;
+%     weights_win = W.weights_win;
+%     fprintf('weights loaded from cache: %gs\n', toc);
+% else
     % compute a weight for each value (data point), at each plot location
     for i=1:num_locs
         weights(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), avg_type, smoothness_factor);
-        weights_win(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), 'sliding', smoothness_factor);
+%         weights_win(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), 'sliding', smoothness_factor);
     end
     fprintf('weights computed: %gs\n', toc);
 
-    % while the hash map is too big removing the first element
-    while length(mapMat)>5 
-        lstKeys= keys(mapMat); 
-        remove(mapMat,lstKeys(1));
-    end
-
-    % adding the name and lnn result to hashmap
-    W.weights = weights;
-    W.weights_win = weights_win;
-    mapMat(hashVal)= W; 
-end
+%     % while the hash map is too big removing the first element
+%     while length(mapMat)>5 
+%         lstKeys= keys(mapMat); 
+%         remove(mapMat,lstKeys(1));
+%     end
+% 
+%     % adding the name and lnn result to hashmap
+%     W.weights = weights;
+%     W.weights_win = weights_win;
+%     mapMat(hashVal)= W; 
+% end
 
 tic;
 %clean branch
@@ -172,7 +172,7 @@ fprintf('estimating branch point: %gs\n', toc);
 
 
 real_weights = weights;
-for bri=2:3
+for bri=1:2
     
     if any(branch)
         tic
@@ -200,7 +200,7 @@ for bri=2:3
         end          
     end
 
-    Y_vals_orig = Y_vals;
+    Y_vals_raw = Y_vals;
     if (normalize)
         % we want to normalize while accounting for branches
         y_vals_all = [];
@@ -210,11 +210,14 @@ for bri=2:3
             % Compute weighted averages at each location
             y_vals_all = [y_vals_all; weights_tmp*Y./repmat(sum(weights_tmp, 2), 1, size(Y, 2))];
         end
-        Y_vals = bsxfun(@minus,Y_vals, prctile(y_vals_all, 1, 1));
-        y_vals_all = bsxfun(@minus,y_vals_all,prctile(y_vals_all, 1, 1));
-        Y_vals(Y_vals<0) = 0;
-        y_vals_all(y_vals_all<0) = 0;
-        Y_vals = columndiv(Y_vals,prctile(y_vals_all, 99, 1));
+        % we want to normalize to [0 1]
+        mins = prctile(y_vals_all, 0, 1);
+        Y_vals = bsxfun(@minus, Y_vals, mins);
+
+        rngs = prctile(bsxfun(@minus, Y_vals_all, mins), 100, 1);
+        Y_vals = bsxfun(@rdivide, Y_vals, rngs);
+
+        Y_vals(Y_vals<0) = 0;        
         Y_vals(Y_vals>1) = 1;
     end
 
@@ -245,23 +248,28 @@ for bri=2:3
     end
     
     if (show_error)
-        % Compute the error for all features in each location\window
+
+        % compute variace along X (symmetically)
         for i=1:num_locs       
-            %symmetrical for error bars - add sqrt over the whole thing?
-            Y_errs(i, :) = weights(i, :)*(((Y-repmat(Y_vals_orig(i, :),Yn,1)-repmat(prctile(Y_vals, 1, 1), size(Y,1),1))./...
-                repmat(prctile((Y_vals_orig), 99, 1),size(Y,1),1))).^2/sum(weights(i, :));        
+            %symmetrical
+            Y_errs = bsxfun(@minus,Y,(Y_vals_raw(i, :)));
+
+            M = sum(weights(i, :)~=0);
+            s = (M-1)/M;
+            w_sum = sum(weights(i, :));
+
+            Y_valerrs(i, :) = sqrt((weights(i, :)*((Y_errs).^2))/(s*w_sum));
         end
 
-        % Normalize the error if need (TODO double check this guess work)
         if (normalize)
-            Y_errs = Y_errs./repmat(prctile((y_vals_all), 99, 1),size(Y_errs,1),1);
+            Y_valerrs = bsxfun(@rdivide,Y_valerrs,rngs);
         end
 
-        % Plot each features error using a semi-transparent fill  
+        % plot the variance as a pretty translucent cloud around line
         for yi=1:size(Y, 2)
-            nni=find(~isnan(Y_errs(:, yi)));
+
             % plot light grey background first for variance
-            fill([X(nni), fliplr(X(nni))], [(Y_vals(nni, yi)-.5*Y_errs(nni, yi))', fliplr((Y_vals(nni, yi)+.5*Y_errs(nni, yi))')],...
+            fill( [X, fliplr(X)], [(Y_vals(:, yi)-Y_valerrs(:, yi)./2)', fliplr((Y_vals(:, yi)+Y_valerrs(:, yi)./2)')],...
                 matColors(yi,:),'linestyle','none','facealpha',.5);
         end
     end
@@ -274,7 +282,7 @@ for bri=2:3
 end
 
     % show density histogram under the plot to show the concentration 
-    if ~(rank || control_density)    
+    if false %~(rank || control_density)    
         try
             dens = sum(weights_win, 2)';
             ca = axis;
@@ -294,14 +302,14 @@ if (legend_flag)
     legend(remove_repeating_strings(labels), 'Interpreter', 'none');
 end
 
-if (check==0)
-    % saving into file
-    try
-    save(cachefilename,'mapMat');
-    catch
-        fprintf('error caching weights in %s', cachefilename);
-    end
-end
+% if (check==0)
+%     % saving into file
+%     try
+%     save(cachefilename,'mapMat');
+%     catch
+%         fprintf('error caching weights in %s', cachefilename);
+%     end
+% end
 
 end
 

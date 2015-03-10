@@ -376,7 +376,7 @@ function OpenMenuItem_Callback(~, ~, ~)
         
 
         %Read in data    
-        csvdats = cellfun(@(fname) csvread(fname, 1,1), files, 'UniformOutput', false);
+        csvdats = cellfun(@(fname) csvread(fname, 1,0), files, 'UniformOutput', false);
         
         %Add data to session
         disp(sprintf('Files loaded: %gs',toc));
@@ -1022,9 +1022,7 @@ function plot_along_time(time_channel)
     end
     
     % ==== TODO === ask by gate or by channels
-    by_gate = false;
-    
-   
+    by_gate = true;
     
     arrWonderlust = session_data(gate_context, time_channel);
     matData       = session_data(gate_context, selected_channels);
@@ -1040,6 +1038,15 @@ function plot_along_time(time_channel)
     avg_type            = avg_types{get(handles.pupAvgType, 'Value')};
     
     if by_gate
+        selected_channels = selected_channels(1);
+        
+        biggest_gate = maxind(cellfun(@numel, gates(selected_gates,2)));
+        matData = zeros(numel(gates{selected_gates(biggest_gate), 2}), numel(selected_gates));
+        for i=1:numel(selected_gates)
+            matData(1:numel(gates{selected_gates(i), 2}),i) = ...
+                session_data(gates{selected_gates(i), 2}, selected_channels);
+        end
+        
         % generate gate source vector for grouping
         for j=selected_gates
             v(ismember(gate_context,gates{j, 2})) = j;
@@ -1058,11 +1065,12 @@ function plot_along_time(time_channel)
 %         arrWonderlust = arrWonderlust./prctile(arrWonderlust, 95);
         arrWonderlust = arrWonderlust./max(arrWonderlust);
         arrWonderlust(arrWonderlust>1) = 1;
+        arrWonderlust = 1-arrWonderlust;
     end
     branch = any(strfind(channel_names{time_channel+1}, 'branch'));
     if (branch)
-    plot_as_function(arrWonderlust, matData, ...
-                    'num_locs', 200,...
+    plot_as_function(1:size(matData,1), matData, ...
+                    'num_locs', 100,...
                     'avg_type', avg_type,...
                     'show_error', show_error,...
                     'labels', channel_names(selected_channels),...
@@ -1072,22 +1080,22 @@ function plot_along_time(time_channel)
                     'smooth', smoothness_factor,...
                     'branch', session_data(gate_context, time_channel+1));
     else
-    plot_as_function(arrWonderlust, matData, ...
+    plot_as_function(1:size(matData,1), matData, ...
                     'num_locs', 100,...
                     'avg_type', avg_type,...
                     'show_error', show_error,...
-                    'labels', channel_names(selected_channels),...
+                    'labels', gate_names ,...
                     'normalize', normalizeY,...
                     'rank', rankY,...
                     'svGolay', svGolay,...
                     'smooth', smoothness_factor);%,...
     end
-    if (numel(selected_channels) ==1)
-        ylabel(channel_names{selected_channels(1)});
-        [mi, ~, ~, ~] = compute_dremi([arrWonderlust matData], .9);
-        
-%         title(sprintf('MI: %g', mi));
-    end
+%     if (numel(selected_channels) ==1)
+%         ylabel(channel_names{selected_channels(1)});
+%         [mi, ~, ~, ~] = compute_dremi([arrWonderlust matData], .9);
+%         
+% %         title(sprintf('MI: %g', mi));
+%     end
 %     legend(legend_labels);
     xlabel(channel_names{time_channel}); 
     if (by_gate)
@@ -3074,7 +3082,7 @@ function hPlot=plotScatter
             if numel(gateContext)<2000
                 parzan(sessionData(gateContext, nCH1), sessionData(gateContext, nCH2));
             else
-            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 64);
+            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 32);
             
 %             cmap = jet;
 %             cmap(1, :) = [1, 1, 1];
@@ -3881,7 +3889,7 @@ function btnGate_ClickedCallback(~, ~, ~, isPoly)
 
         setStatus('Waiting: Double click on node when finished');
         gate_inds = tsne_gate(gcf, sessionData(gateContext, [CH1 CH2]), 1, isPoly);
-        setStatus(sprintf('you have gated: %g data points', numel(gate_inds))); 
+        setStatus(sprintf('you have gated: %g data points (%2.2f%%)', numel(gate_inds),numel(gate_inds)/numel(gateContext) )); 
 
         if size(gate_inds, 2) > 0
             % create new gate
@@ -5722,6 +5730,77 @@ function openEndedAction
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
     
+    
+    dirs = dir;
+	tripsig = [];
+    for i=3:length(dirs)
+        driverfiles = dir([dirs(i).name filesep '*.csv']);
+        driveri= str2num(dirs(i).name);
+        disp(i);
+        for tripi=1:length(driverfiles)
+            xy = csvread([dirs(i).name filesep driverfiles(tripi).name], 1,0);          
+            speed = [0 0; diff(xy)];
+            acc   = [0 0; diff(speed)];
+            tspeed = (speed(:,1).^2+speed(:,2).^2).^.5;
+            tacc = (acc(:,1).^2+acc(:,2).^2).^.5;
+            mspeed = mean(tspeed);
+            macc = mean(tacc);
+            tripsig(end+1, :) = [driveri, mspeed, macc, mspeed/macc, std(tacc), length(xy), log(length(xy)), log(length(xy)), sum(tspeed), log(sum(tspeed)),sum(tacc), log(sum(tacc))];
+        end
+    end
+    save('tripsig.mat', 'tripsig');
+    a = 1;
+return;
+    
+    
+%     return;
+    speed = zeros(size(session_data, 1), 2);
+    total_speed = zeros(size(session_data, 1), 1);
+    
+    acc = zeros(size(session_data, 1), 2);
+    total_acc = zeros(size(session_data, 1), 1);
+    
+    time = zeros(size(session_data, 1), 1);
+    
+    avg_speed     = zeros(size(session_data, 1), 1);
+    avg_acc     = zeros(size(session_data, 1), 1);
+    acc_std     = zeros(size(session_data, 1), 1);
+    trip_duration = zeros(size(session_data, 1), 1);
+    distance      = zeros(size(session_data, 1), 1);
+    
+    for gatei=1:size(gates,1)
+        disp(num2str(gatei));
+        gateinds = gates{gatei,2};
+        time(gateinds) = 1:numel(gateinds);
+        
+        speed(gateinds(2:end),:) = diff(session_data(gateinds, 1:2));
+        acc(gateinds(2:end), :) = diff(speed(gateinds, :));
+        
+        total_speed(:) = (speed(:,1).^2+speed(:,2).^2).^.5;
+        total_acc(:) = (acc(:,1).^2+acc(:,2).^2).^.5;
+
+        avg_speed(gateinds) = mean(total_speed(gateinds));
+        avg_acc(gateinds) = mean(total_acc(gateinds));
+        acc_std(gateinds) =  std(total_acc(gateinds))
+        trip_duration(gateinds) = numel(gateinds);
+        distance(gateinds) = sum(total_speed(gateinds));
+    end
+%     total_speed(:) = (speed(:,1).^2+speed(:,2).^2).^.5;
+%     total_acc(:) = (acc(:,1).^2+acc(:,2).^2).^.5;
+    
+    addChannels({'time',...
+                 'speedx','speedy', 'total_speed',...
+                 'accx','accy','total_acc',...
+                 'avg_speed','avg_acc',...
+                 'acc_std','trip_duration',...
+                 'distance'},...
+        [time,...
+        speed, total_speed,...
+        acc, total_acc,...
+        avg_speed,avg_acc,...
+        acc_std, trip_duration, distance]);
+    return;
+        
     %% diffusion map
     data = session_data(gate_context, selected_channels);
     kev = 15;
@@ -5732,9 +5811,9 @@ function openEndedAction
                             'Symmetrization', 'W+Wt'); ...
 
     GD = GraphDiffusion(data', 0, GraphDiffOpts);
-    C = mat2cell([2:kev; GD.EigenVals(2:kev)']',ones(kev-1, 1));
+    C = mat2cell([1:kev; GD.EigenVals(1:kev)']',ones(kev, 1));
     [vg, vc] = addChannels( cellfun(@(x)sprintf('E%g (%2.2f)', x), C, 'UniformOutput', false),...
-                 GD.EigenVecs(:, 2:kev));
+                 GD.EigenVecs(:, 1:kev));
              
     auxInfo.what = 'Diffusion Map';
     auxInfo.channels = selected_channels;

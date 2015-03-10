@@ -532,7 +532,7 @@ function [ traj, dist, l, RNK,paths_l2l, diffdists,Y ] = trajectory_landmarks( s
         
         % if branch - add 'tailk' landmarks from the tail (30 prc) of the data
         if G.Opts.branch
-            tailk=10;
+            tailk=20;
             [dists, ~, ~] = graphshortestpath( spdists, G.Opts.s,'METHOD','Dijkstra', 'directed', true);
             tailband = find( dists>=(prctile(dists, 70)) );
             tailk = min([length(tailband), tailk, floor(length( n )/2)]); 
@@ -721,7 +721,11 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
 
     % square matrix of the difference of perspectives landmark to landmark
     diffdists = abs(reported - proposed);
-    diffdists = .5*(diffdists'+diffdists);
+    diffdists = (diffdists'+diffdists)/2;
+    
+%     %normalize by dist?
+%     diffdists = diffdists.*repmat(dist(1,landmarks)', 1, numel(landmarks));
+
 %     c = segmentlikemichealjordanwould(diffdists);
 %     c = Opts.end_clusters(landmarks);
     
@@ -773,7 +777,7 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
     end
     
     % reassign to clusters based on branch point
-    pb = prctile(fork_p, 55);
+    pb = prctile(fork_p, 10);
     c_new = c;
     [~,I] = min(abs(dist(1:numel(landmarks), :)));
     RNK = c_new(I);
@@ -787,22 +791,23 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
     
     % Compute affinity matrix over landmark distances
     n = size(dist,2); % num points
-    sigma = .2*std(dist(:));
-    Aff = exp((-.5*(1/sigma^2)).*dist(:, setdiff(1:n, landmarks)).^2);
+    regular_points = 1:n;%setdiff(1:n, landmarks);
+    sigma = .1*std(dist(:));
+    Aff = exp((-.5*(1/sigma^2)).*dist(:, regular_points).^2);
     
     % make aff matrix a stochastic operator
     Stoch=columndiv(Aff, sum(Aff));
     Y = zeros(1,n);
     Y(landmarks) = e2;
-    Y(setdiff(1:n, landmarks))=Stoch'*e2(:);
+    Y(regular_points)=(Stoch'*e2(:)).*(t(regular_points)'.^.7);
     
     if (Opts.plot_landmark_paths && (Opts.plot_debug_branch || numel(unique(c_new))<3))
 
         figure('Color',[1 1 1]);
         
         subplot(2,2,1);       
-        scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*150, c(idx), '.');
-        title('Initial segmentation');
+        scatter(Y,t, 150, '.');
+        title('Projection');
 
         subplot(2,2,2);       
         scatter(evec2(idx),t(landmarks(idx)), ones(size(evec2))*150, c_new(idx), '.');
