@@ -159,6 +159,8 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
 
     put('diff', 0);
     
+    put('markerSize', 10);
+    
     put('gates_listener',   @refreshGates)
     
     
@@ -2774,10 +2776,7 @@ function hPlot=plotScatter
     else
         set(handles.pupZAxis, 'Value', 1);        
     end
-    
-%     plot_knn(handles, nSelChannels, sessionData, gateContext, nCH1, nCH2, nCH3);
-%     hold on;
-   
+      
     nChColors = get(handles.pupColorBy, 'Value')-1;
     nplots = numel(nChColors);
     nrows = floor(nplots/3)+1;
@@ -2809,18 +2808,7 @@ function hPlot=plotScatter
         end
         vX = sessionData(aggregateinds, nCH1);
         vY = sessionData(aggregateinds, nCH2);
-
-            if (nSelChannels == 3)
-                vZ = sessionData(aggregateinds, nCH3);
-            else
-                if get(handles.chkRandomLayers, 'Value')
-                    vZ = rand(1, numel(vX))*10;
-                else
-                    vZ = vColor;
-                end
-            end
-
-        % plot 
+ 
         if get(handles.chkGradientCommunities, 'Value')
             clr = jet(numel(selected_gates));
         else
@@ -2828,24 +2816,32 @@ function hPlot=plotScatter
 %             clr(1:2, :) = .8; % remove red
         end
         
-            vColor_discrete = vColor;
-            colors = unique(vColor)';
-            for ci=1:numel(colors);
-                vColor_discrete(vColor==colors(ci)) = ci;
-            end
+        vColor_discrete = vColor;
+        colors = unique(vColor)';
+        for ci=1:numel(colors);
+            vColor_discrete(vColor==colors(ci)) = ci;
+        end
 
         if ~get(handles.chkDensity, 'Value')
-            myplotclr(vX, vY, vZ, vColor_discrete, '.', clr, [min(vColor_discrete), max(vColor_discrete)], nSelChannels == 3);
+            h=gscatter(vX, vY, vColor_discrete, clr, '.', retr('markerSize'),'off');
+            if get(handles.chkRandomLayers, 'Value')
+                setStatus('Random layers is not supported anymore until further notice');
+            end
+
+            if (nSelChannels == 3)
+                vZ = sessionData(aggregateinds, nCH3);
+
+                gu = unique(vColor_discrete);
+                for k = 1:numel(gu)
+                    set(h(k), 'ZData', vZ( vColor_discrete == gu(k) ));
+                end
+            view(3)
+            end
         end
+
+        % plot 
         box on;
         colorbar off;
-
-%         vSize = ones(numel(gateContext), 1);
-%         vSize(gates{2, 2}) = 2;
-%         vSize = mynormalize(vSize, 99.99)*1000;
-%         myscatter_by_point(vX, vY, vZ, vColor, vSize, true);
-%         box on;
-%         colorbar off;
 
         if get(handles.chkLegend, 'Value') && numel(selected_gates) > 1
             l = legend(remove_repeating_strings(gates(selected_gates, 1)), 'Interpreter', 'none');
@@ -2855,6 +2851,7 @@ function hPlot=plotScatter
         end
         adjustlegendmarkersize(14);
         hold off;
+        
     % color by channel
     else
         % scatter all selected gates and color by a channel
@@ -2864,7 +2861,7 @@ function hPlot=plotScatter
             vColor = sessionData(gateContext, nChColor);
 
             unqValues = unique(vColor);
-            if (numel(unqValues) > 100 || ~isDiscrete(nChColor) )
+            if ( ~isDiscrete(nChColor) )
  
                 if get(handles.chkOutlier, 'Value')
                     clim = adjustClimsToUserScaling([prctile(vColor, 0.3)  prctile(vColor, 99.7)]);
@@ -2872,23 +2869,17 @@ function hPlot=plotScatter
                     clim = adjustClimsToUserScaling([min(vColor) max(vColor)]);
                 end
 
+                vColor(vColor<clim(1)) = clim(1);
+                vColor(vColor>clim(2)) = clim(2);
+                
                 if (nSelChannels == 3)
                     vZ = sessionData(gateContext, nCH3);
-                else
-                    vZ = rand(1, numel(vX))*(clim(2)-clim(1))+clim(1);
+                    scatter3(vX, vY, vZ, 5*retr('markerSize'), vColor, '.');
+                elseif ~get(handles.chkDensity, 'Value')
+                    scatter(vX, vY, 5*retr('markerSize'), vColor, '.');    
                 end
-
-                
-                if ~get(handles.chkDensity, 'Value')
-                    myplotclr(vX, vY, vZ, vColor, '.', colormap, clim, nSelChannels == 3);      
-                 end
                 colorbar;
                 caxis(clim);
-                
-                
-%                   vSize = sessionData(gateContext, end);
-%                  vSize = mynormalize(vSize, 99.99)*1000;
-%                   myscatter_by_point(vX, vY, vColor, vSize, false);
 
             else % color by community.
                 
@@ -2905,148 +2896,48 @@ function hPlot=plotScatter
 %                     clr(setdiff(unqValues, unwanted)+1,:) = .8;
                 end
                 
-                    
+                vColor_discrete = vColor;
+                colors = unique(vColor)';
+                for ci=1:numel(colors);
+                    vColor_discrete(vColor==colors(ci)) = ci;
+                end
                 
-                if (nSelChannels == 3)
-                    vZ = sessionData(gateContext, nCH3);
-                else
-                    if get(handles.chkRandomLayers, 'Value')
-                        vZ = rand(1, numel(vX))*10;
+               % plot 
+                tic;
+                if ~get(handles.chkDensity, 'Value')
+                    if numel(colors) < 15
+                        h = gscatter(vX, vY, vColor_discrete, clr, '.', retr('markerSize'));
+                        if (nSelChannels == 3)
+                            vZ = sessionData(gateContext, nCH3);
+                            gu = unique(vColor_discrete);
+                            for k = 1:numel(gu)
+                                set(h(k), 'ZData', vZ( vColor_discrete == gu(k) ));
+                            end
+                            view(3)
+                        end
                     else
-                        vZ = vColor;
+                        if (nSelChannels == 3)
+                            vZ = sessionData(gateContext, nCH3);
+                            scatter3(vX, vY, vZ, 5*retr('markerSize'), vColor_discrete, '.');
+                        else
+                            scatter(vX, vY, 5*retr('markerSize'), vColor_discrete, '.');
+                            colormap(clr);
+                            legend(sprintf('%g groups in %s', numel(colors), channelNames{nChColor}));
+                        end
+                        setStatus('color legend is not displayed, too many groups');
                     end
                 end
-
-            vColor_discrete = vColor;
-            colors = unique(vColor)';
-            for ci=1:numel(colors);
-                vColor_discrete(vColor==colors(ci)) = ci;
-            end
-            
-            % plot 
-            if ~get(handles.chkDensity, 'Value')
-
-                myplotclr(vX, vY, vZ, vColor_discrete, '.', clr, [min(vColor_discrete), max(vColor_discrete)], false)
-            end
-            colorbar off;
-            [hl, hobj, hout, mout]=legend(cellfun(@(n)(num2str(n)), num2cell(unique(vColor)), 'UniformOutput', false));                    
-%             for houti=1:numel(hout)
-%                 hout(houti).MarkerSize = 12;
-%             end
-%               gscatter(vX, vY ,vColor, clr, '.', get(0, 'DefaultLineMarkerSize'), doleg);
-
-%                  vSize = sessionData(gateContext, end);
-%                  vSize = mynormalize(vSize, 99.99)*1000;
-%                   myscatter_by_point(vX, vY, vColor, vSize, true);
-
-        adjustlegendmarkersize(hl, 14);
+                toc
+             
+%                 colormap(clr);
+                colorbar off;
+%                 [hl, hobj, hout, mout]=legend(cellfun(@(n)(num2str(n)), num2cell(unique(vColor)), 'UniformOutput', false));                    
+%                 adjustlegendmarkersize(hl, 14);
             end
             
         % color the difference of a channel between two gates
         else  
-            basal_gate = gates{selected_gates(1), 2};
-            drug_gate  = gates{selected_gates(2), 2};
-            
-            % filter indices if user selected to intersect gates
-            if get(handles.btnIntersect, 'Value')
-                [inds, ~] = getSelectedIndices(get(handles.lstIntGates, 'Value'));
-                if (~isempty(inds))
-                    basal_gate = intersect(inds, basal_gate);
-                    drug_gate  = intersect(inds, basal_gate);
-                end
-            end
-            
-            vX = sessionData(basal_gate, nCH1);
-            vY = sessionData(basal_gate, nCH2);
-            vZ = sessionData(basal_gate, nChColor);
-
-            vA = sessionData(drug_gate, nCH1);
-            vB = sessionData(drug_gate, nCH2);
-            vC = sessionData(drug_gate, nChColor);
-
-
-            if get(handles.rdbDiffBox, 'Value')
-                thresh_val = get(handles.sldrThreshold, 'Value');
-                box_size_val = get(handles.sldrBox, 'Value');
-                thresh = round(thresh_val);
-                nbins = round(30-(box_size_val*2));
-
-                selected_ind = union(basal_gate, drug_gate);
-                XandA = sessionData(selected_ind, nCH1);
-                YandB = sessionData(selected_ind, nCH2);
-
-                %# bin centers (integers)
-                xbins = linspace(floor(min(XandA)),ceil(max(XandA)),nbins);
-                ybins = linspace(floor(min(YandB)),ceil(max(YandB)),nbins);
-                xNumBins = numel(xbins); yNumBins = numel(ybins);
-
-                %# map X/Y values to bin indices
-                Xi = round( interp1(xbins, 1:xNumBins, vX, 'linear', 'extrap') );
-                Yi = round( interp1(ybins, 1:yNumBins, vY, 'linear', 'extrap') );
-
-                %# count number of elements in each bin
-                numPtsXY = accumarray([Yi(:) Xi(:)], 1, [yNumBins xNumBins]);
-                sumXY = accumarray([Yi(:) Xi(:)], vZ, [yNumBins xNumBins]);
-
-                % TODO take care of thresh
-                XY = sumXY./numPtsXY;
-    %             XY(find(numPtsXY<thresh)) = 0;
-
-                %# map A/B values to bin indices
-                Ai = round( interp1(xbins, 1:xNumBins, vA, 'linear', 'extrap') );
-                Bi = round( interp1(ybins, 1:yNumBins, vB, 'linear', 'extrap') );
-
-                %# count number of elements in each bin
-                numPtsAB = accumarray([Bi(:) Ai(:)], 1, [yNumBins xNumBins]);
-                sumAB = accumarray([Bi(:) Ai(:)], vC, [yNumBins xNumBins]);
-
-                % TODO take care of thresh
-                AB = sumAB./numPtsAB;
-
-                diff = AB-XY;
-                diff(find(numPtsAB<thresh)) = NaN;
-                diff(find(numPtsXY<thresh)) = NaN;
-                    
-                %# plot 2D histogram
-                nanimagesc(diff, genColorMap('rwb', 20), 'zeroc', 1, 'xbins', xbins, 'ybins', ybins);
-                colorbar; set(gca,'YDir','normal'); hold off;
-%                 hold on, plot(vX, vY, 'b.', 'MarkerSize', 10)
-%                 plot(vA, vB, 'g.', 'MarkerSize', 4), 
-%                 hold off;
-            elseif get(handles.rdbDiffVoronoi, 'Value')
-
-                thresh = round(get(handles.sldrDiffVoronoi, 'Value'));
-                tic
-                [v,c]=voronoin([vX vY]);
-                disp(sprintf('Voronoi cells computed: %gs',toc));
-
-                tic
-                hold on;
-                vColors = NaN(length(c), 1);
-                for ci = 1:length(c) 
-                    if all(c{ci}~=1)   % If at least one of the indices is 1, 
-                                      % then it is an open region and we can't 
-                                      % patch that.
-                        in = find(inpoly([vA vB], v(c{ci},:)));
-                        if (length(in)>=thresh) 
-                            vColors(ci) = mean(vC(in))-vZ(ci);
-                            patch(v(c{ci},1),v(c{ci},2),vColors(ci)); % use color i.
-                        end
-                    end
-                end
-                
-                [cmap clim] = setColorbar(vColors);
-
-                disp(sprintf('Voronoi cells colored: %gs',toc));
-                colorbar;
-                set(gca,'CLim',clim);
-                hold on, plot(vX, vY, 'b.', 'MarkerSize',4)
-                plot(vA, vB, 'g.', 'MarkerSize',4);
-                hold off;
-            else
-                plot_KNN_diff(nChColor);
-                return;
-            end
+            plotDifferentialExpressionOverTwoGates;
         end
     end
     
@@ -3073,7 +2964,7 @@ function hPlot=plotScatter
             gating = 'off';
         end
         enableGating(handles, gating);
-        view(2);
+%         view(2);
         h = zlabel(' ');
         set(h, 'String', '');
 
@@ -3082,12 +2973,12 @@ function hPlot=plotScatter
             if numel(gateContext)<2000
                 parzan(sessionData(gateContext, nCH1), sessionData(gateContext, nCH2));
             else
-            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 32);
+                [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 32);
             
 %             cmap = jet;
 %             cmap(1, :) = [1, 1, 1];
 %             colormap(cmap);
-            contour(x, y, density, 128);
+                contour(x, y, density, 128);
             end
             hold off;
         end
@@ -3111,10 +3002,126 @@ function hPlot=plotScatter
                 setStatus('Warning: please enter numerical values for manual colorbar scaling');
             end    
         end
-   end
-    tic
+    end
     % --- add KNN plot
     plot_knn(handles, nSelChannels, sessionData, gateContext, nCH1, nCH2, nCH3);
+end
+
+function plotDifferentialExpressionOverTwoGates
+handles = gethand;
+gates = retr('gates');
+sessionData = retr('sessionData');
+selected_gates = get(handles.lstGates, 'Value');
+selected_channels = get(handles.lstChannels, 'Value');
+nCH1 = selected_channels(1);
+nCH2 = selected_channels(2);
+nChColor = get(handles.pupColorBy, 'Value')-1;
+
+
+basal_gate = gates{selected_gates(1), 2};
+drug_gate  = gates{selected_gates(2), 2};
+
+% filter indices if user selected to intersect gates
+if get(handles.btnIntersect, 'Value')
+    [inds, ~] = getSelectedIndices(get(handles.lstIntGates, 'Value'));
+    if (~isempty(inds))
+        basal_gate = intersect(inds, basal_gate);
+        drug_gate  = intersect(inds, basal_gate);
+    end
+end
+
+vX = sessionData(basal_gate, nCH1);
+vY = sessionData(basal_gate, nCH2);
+vZ = sessionData(basal_gate, nChColor);
+
+vA = sessionData(drug_gate, nCH1);
+vB = sessionData(drug_gate, nCH2);
+vC = sessionData(drug_gate, nChColor);
+
+
+if get(handles.rdbDiffBox, 'Value')
+    thresh_val = get(handles.sldrThreshold, 'Value');
+    box_size_val = get(handles.sldrBox, 'Value');
+    thresh = round(thresh_val);
+    nbins = round(30-(box_size_val*2));
+    
+    selected_ind = union(basal_gate, drug_gate);
+    XandA = sessionData(selected_ind, nCH1);
+    YandB = sessionData(selected_ind, nCH2);
+    
+    %# bin centers (integers)
+    xbins = linspace(floor(min(XandA)),ceil(max(XandA)),nbins);
+    ybins = linspace(floor(min(YandB)),ceil(max(YandB)),nbins);
+    xNumBins = numel(xbins); yNumBins = numel(ybins);
+    
+    %# map X/Y values to bin indices
+    Xi = round( interp1(xbins, 1:xNumBins, vX, 'linear', 'extrap') );
+    Yi = round( interp1(ybins, 1:yNumBins, vY, 'linear', 'extrap') );
+    
+    %# count number of elements in each bin
+    numPtsXY = accumarray([Yi(:) Xi(:)], 1, [yNumBins xNumBins]);
+    sumXY = accumarray([Yi(:) Xi(:)], vZ, [yNumBins xNumBins]);
+    
+    % TODO take care of thresh
+    XY = sumXY./numPtsXY;
+    %             XY(find(numPtsXY<thresh)) = 0;
+    
+    %# map A/B values to bin indices
+    Ai = round( interp1(xbins, 1:xNumBins, vA, 'linear', 'extrap') );
+    Bi = round( interp1(ybins, 1:yNumBins, vB, 'linear', 'extrap') );
+    
+    %# count number of elements in each bin
+    numPtsAB = accumarray([Bi(:) Ai(:)], 1, [yNumBins xNumBins]);
+    sumAB = accumarray([Bi(:) Ai(:)], vC, [yNumBins xNumBins]);
+    
+    % TODO take care of thresh
+    AB = sumAB./numPtsAB;
+    
+    diff = AB-XY;
+    diff(find(numPtsAB<thresh)) = NaN;
+    diff(find(numPtsXY<thresh)) = NaN;
+    
+    %# plot 2D histogram
+    nanimagesc(diff, genColorMap('rwb', 20), 'zeroc', 1, 'xbins', xbins, 'ybins', ybins);
+    colorbar; set(gca,'YDir','normal'); hold off;
+    %                 hold on, plot(vX, vY, 'b.', 'MarkerSize', 10)
+    %                 plot(vA, vB, 'g.', 'MarkerSize', 4),
+    %                 hold off;
+elseif get(handles.rdbDiffVoronoi, 'Value')
+    
+    thresh = round(get(handles.sldrDiffVoronoi, 'Value'));
+    tic
+    [v,c]=voronoin([vX vY]);
+    disp(sprintf('Voronoi cells computed: %gs',toc));
+    
+    tic
+    hold on;
+    vColors = NaN(length(c), 1);
+    for ci = 1:length(c)
+        if all(c{ci}~=1)   % If at least one of the indices is 1,
+            % then it is an open region and we can't
+            % patch that.
+            in = find(inpoly([vA vB], v(c{ci},:)));
+            if (length(in)>=thresh)
+                vColors(ci) = mean(vC(in))-vZ(ci);
+                patch(v(c{ci},1),v(c{ci},2),vColors(ci)); % use color i.
+            end
+        end
+    end
+    
+    [cmap clim] = setColorbar(vColors);
+    
+    disp(sprintf('Voronoi cells colored: %gs',toc));
+    colorbar;
+    set(gca,'CLim',clim);
+    hold on, plot(vX, vY, 'b.', 'MarkerSize',4)
+    plot(vA, vB, 'g.', 'MarkerSize',4);
+    hold off;
+else
+    plot_KNN_diff(nChColor);
+    return;
+end
+
 end
 
 function fixLegendMarkerSize
@@ -4559,6 +4566,9 @@ function cmiSplitToGates_Callback(~, ~, ~)
 
                 % Set channel names
                 gates{end, 3} = channel_names;
+                if val > 20
+                    break;
+                end
             end
         end
     else
@@ -5730,7 +5740,35 @@ function openEndedAction
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
     
-    
+       for gatei = selected_gates
+        xy = session_data(gates{selected_gates(gatei), 2}, 1:2);
+        speedxy = [0 0; diff(xy)];
+        speed = (speedxy(:,1).^2+speedxy(:,2).^2).^.5;
+        fspeed3 = medfilt1(speed, 3);
+        fspeed5 = medfilt1(speed, 5);
+        dist = (xy(:,1).^2+xy(:,2).^2).^.5;
+        speedprc = [1; dist(2:end)./dist(1:end-1);];
+        speedprc(isnan(speedprc) | isinf(speedprc)) = 1;
+        logspeedprc = log(speedprc);
+        accprc = speed(2:end)./speed(1:end-1);
+        accprc = [1; accprc(:)];
+        accprc(isnan(accprc) | isinf(accprc)) = 1;
+        logaccprc = log(accprc);
+        jump = (speed(5:end)>(speed(2:end-3)+speed(3:end-2)+speed(4:end-1)));
+        jump = [zeros(4,1); jump];
+        sum(jump)
+        
+        addChannels({'speed', 'fspeed3', 'fspeed5','accprc', 'logaccprc','jump', 'speedprc','logspeedprc' },...
+                    [speed, fspeed3, fspeed5, accprc, logaccprc,jump,speedprc,logspeedprc],...
+            gates{selected_gates(gatei), 2},...
+            selected_gates(gatei));
+    end
+    return;
+
+    % add more features
+   a=1;
+    return;
+    % read drivers 
     dirs = dir;
 	tripsig = [];
     for i=3:length(dirs)
@@ -5739,15 +5777,36 @@ function openEndedAction
         disp(i);
         for tripi=1:length(driverfiles)
             xy = csvread([dirs(i).name filesep driverfiles(tripi).name], 1,0);          
-            speed = [0 0; diff(xy)];
-            acc   = [0 0; diff(speed)];
-            tspeed = (speed(:,1).^2+speed(:,2).^2).^.5;
-            tacc = (acc(:,1).^2+acc(:,2).^2).^.5;
-            mspeed = mean(tspeed);
-            macc = mean(tacc);
-            tripsig(end+1, :) = [driveri, mspeed, macc, mspeed/macc, std(tacc), length(xy), log(length(xy)), log(length(xy)), sum(tspeed), log(sum(tspeed)),sum(tacc), log(sum(tacc))];
+            speedxy = [0 0; diff(xy)];
+            speed = (speedxy(:,1).^2+speedxy(:,2).^2).^.5;
+            
+            % some paths have jumps must clean - median filter
+            
+            
+            nspeed = mynormalize(speed, 99);
+            mspeed = mean(speed);
+            mnspeed = mean(nspeed);
+            
+            accxy   = [0 0; diff(speedxy)];
+            acc = (accxy(:,1).^2+accxy(:,2).^2).^.5;
+            macc = mean(acc);
+            nacc = mynormalize(acc, 99);
+            mnacc = mean(mnacc);
+            tripsig(end+1, :) = [driveri,...
+                mspeed, macc,...
+                mnspeed, mnacc,...
+                mspeed/macc,...
+                mnspeed/mnacc,...
+                std(speed), std(acc),...
+                std(nspeed), std(nacc),...
+                std(nspeed)/nspeed, std(nacc)/nacc,...
+                length(xy),...
+                log(length(xy)),...
+                sum(tspeed),...
+                log(sum(tspeed)),sum(tacc), log(sum(tacc))];
         end
     end
+    create_cyt_session(tripsig, {'driveri', 'mspeed', 'macc', 'mspeed/macc', 'mnspeed/mnacc', 'std(tacc)', 'length(xy)', 'log(length(xy))', 'sum(tspeed)', 'log(sum(tspeed))','sum(tacc)', 'log(sum(tacc))'});
     save('tripsig.mat', 'tripsig');
     a = 1;
 return;

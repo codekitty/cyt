@@ -33,15 +33,13 @@ function scatter_by_point(x, y, gcolors, dot_size)
     % plot each color in a seperate group (otherwise the legend won't work)
     for i=1:nGroups
         curr_group = groups(i);
-%         if (curr_group~=0)
-            curr_color_inds = (curr_group==gcolors);
+        curr_color_inds = (curr_group==gcolors);
 
-            scatter(x(curr_color_inds),y(curr_color_inds),...
-                    dot_size(curr_color_inds),...
-                    color_per_group(i, :), 'fill');
+        scatter(x(curr_color_inds),y(curr_color_inds),...
+                dot_size(curr_color_inds),...
+                color_per_group(i, :), 'fill');
 
-             hold on; 
-%        end
+         hold on; 
     end
     
 	% find axis limits
