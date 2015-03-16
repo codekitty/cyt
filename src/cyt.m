@@ -255,13 +255,13 @@ end
 clear sessionData;
 
 % request session file
-[filename, pathname, ~] = uigetfile('*.mat', 'Load SightOff Session');
-if isequal(filename,0) || isequal(pathname,0)
+filename = uipickfiles('num',1,'out','ch', 'FilterSpec', ['*.mat']);%('*.mat', 'Load SightOff Session');
+if isequal(filename,0) %|| isequal(pathname,0)
     return;
 end
 
 % load file
-load([pathname filename]);
+load(filename);
 
 % test file validity
 if (exist('session_data', 'var')) %backwards compatibility
@@ -953,6 +953,8 @@ function plot_histograms(by_gates)
         i = i+1;
         if (by_gates)
             if ~isempty(subpop_selection) 
+%                 nhist(referenceData(:, channel), 'smooth', 'proportion');
+%                 nhist(subpopData(:, channel), 'smooth', 'proportion');
                 dplot(referenceData(:, channel),'colors',ColorMtx);
                 dplot(subpopData(:, channel),'colors',ColorMtx);
             else
@@ -961,7 +963,8 @@ function plot_histograms(by_gates)
                     if ~isempty(intIndices)
                         currGate = intersect(intIndices, currGate);
                     end
-                    dplot(sessionData(currGate, channel),'colors',ColorMtx);
+                    nhist(sessionData(currGate, channel), 'smooth', 'proportion');
+%                     dplot(sessionData(currGate, channel),'colors',ColorMtx);
                 end
             end
         else
@@ -2915,6 +2918,7 @@ function hPlot=plotScatter
                             end
                             view(3)
                         end
+                     [hl, hobj, hout, mout]=legend(cellfun(@(n)(num2str(n)), num2cell(unique(vColor)), 'UniformOutput', false));                    
                     else
                         if (nSelChannels == 3)
                             vZ = sessionData(gateContext, nCH3);
@@ -2931,7 +2935,6 @@ function hPlot=plotScatter
              
 %                 colormap(clr);
                 colorbar off;
-%                 [hl, hobj, hout, mout]=legend(cellfun(@(n)(num2str(n)), num2cell(unique(vColor)), 'UniformOutput', false));                    
 %                 adjustlegendmarkersize(hl, 14);
             end
             
@@ -2964,7 +2967,7 @@ function hPlot=plotScatter
             gating = 'off';
         end
         enableGating(handles, gating);
-%         view(2);
+        view(2);
         h = zlabel(' ');
         set(h, 'String', '');
 
@@ -4566,9 +4569,6 @@ function cmiSplitToGates_Callback(~, ~, ~)
 
                 % Set channel names
                 gates{end, 3} = channel_names;
-                if val > 20
-                    break;
-                end
             end
         end
     else
@@ -4787,7 +4787,7 @@ function isDiscrete=isDiscrete(nChannel)
     gateContext = retr('gateContext');
     sessionData = retr('sessionData');
     unique_values = unique(sessionData(gateContext, nChannel));
-    isDiscrete = numel(gateContext)>0 && numel(unique_values) < 28;
+    isDiscrete = numel(gateContext)>0 && numel(unique_values) < 15;
     if ~isDiscrete
         if (unique_values == round(unique_values));
             isDiscrete = 1;
@@ -5740,227 +5740,6 @@ function openEndedAction
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
     
-       for gatei = selected_gates
-        xy = session_data(gates{selected_gates(gatei), 2}, 1:2);
-        speedxy = [0 0; diff(xy)];
-        speed = (speedxy(:,1).^2+speedxy(:,2).^2).^.5;
-        fspeed3 = medfilt1(speed, 3);
-        fspeed5 = medfilt1(speed, 5);
-        dist = (xy(:,1).^2+xy(:,2).^2).^.5;
-        speedprc = [1; dist(2:end)./dist(1:end-1);];
-        speedprc(isnan(speedprc) | isinf(speedprc)) = 1;
-        logspeedprc = log(speedprc);
-        accprc = speed(2:end)./speed(1:end-1);
-        accprc = [1; accprc(:)];
-        accprc(isnan(accprc) | isinf(accprc)) = 1;
-        logaccprc = log(accprc);
-        jump = (speed(5:end)>(speed(2:end-3)+speed(3:end-2)+speed(4:end-1)));
-        jump = [zeros(4,1); jump];
-        sum(jump)
-        
-        addChannels({'speed', 'fspeed3', 'fspeed5','accprc', 'logaccprc','jump', 'speedprc','logspeedprc' },...
-                    [speed, fspeed3, fspeed5, accprc, logaccprc,jump,speedprc,logspeedprc],...
-            gates{selected_gates(gatei), 2},...
-            selected_gates(gatei));
-    end
-    return;
-
-    % add more features
-   a=1;
-    return;
-    % read drivers 
-    dirs = dir;
-	tripsig = [];
-    for i=3:length(dirs)
-        driverfiles = dir([dirs(i).name filesep '*.csv']);
-        driveri= str2num(dirs(i).name);
-        disp(i);
-        for tripi=1:length(driverfiles)
-            xy = csvread([dirs(i).name filesep driverfiles(tripi).name], 1,0);          
-            speedxy = [0 0; diff(xy)];
-            speed = (speedxy(:,1).^2+speedxy(:,2).^2).^.5;
-            
-            % some paths have jumps must clean - median filter
-            
-            
-            nspeed = mynormalize(speed, 99);
-            mspeed = mean(speed);
-            mnspeed = mean(nspeed);
-            
-            accxy   = [0 0; diff(speedxy)];
-            acc = (accxy(:,1).^2+accxy(:,2).^2).^.5;
-            macc = mean(acc);
-            nacc = mynormalize(acc, 99);
-            mnacc = mean(mnacc);
-            tripsig(end+1, :) = [driveri,...
-                mspeed, macc,...
-                mnspeed, mnacc,...
-                mspeed/macc,...
-                mnspeed/mnacc,...
-                std(speed), std(acc),...
-                std(nspeed), std(nacc),...
-                std(nspeed)/nspeed, std(nacc)/nacc,...
-                length(xy),...
-                log(length(xy)),...
-                sum(tspeed),...
-                log(sum(tspeed)),sum(tacc), log(sum(tacc))];
-        end
-    end
-    create_cyt_session(tripsig, {'driveri', 'mspeed', 'macc', 'mspeed/macc', 'mnspeed/mnacc', 'std(tacc)', 'length(xy)', 'log(length(xy))', 'sum(tspeed)', 'log(sum(tspeed))','sum(tacc)', 'log(sum(tacc))'});
-    save('tripsig.mat', 'tripsig');
-    a = 1;
-return;
-    
-    
-%     return;
-    speed = zeros(size(session_data, 1), 2);
-    total_speed = zeros(size(session_data, 1), 1);
-    
-    acc = zeros(size(session_data, 1), 2);
-    total_acc = zeros(size(session_data, 1), 1);
-    
-    time = zeros(size(session_data, 1), 1);
-    
-    avg_speed     = zeros(size(session_data, 1), 1);
-    avg_acc     = zeros(size(session_data, 1), 1);
-    acc_std     = zeros(size(session_data, 1), 1);
-    trip_duration = zeros(size(session_data, 1), 1);
-    distance      = zeros(size(session_data, 1), 1);
-    
-    for gatei=1:size(gates,1)
-        disp(num2str(gatei));
-        gateinds = gates{gatei,2};
-        time(gateinds) = 1:numel(gateinds);
-        
-        speed(gateinds(2:end),:) = diff(session_data(gateinds, 1:2));
-        acc(gateinds(2:end), :) = diff(speed(gateinds, :));
-        
-        total_speed(:) = (speed(:,1).^2+speed(:,2).^2).^.5;
-        total_acc(:) = (acc(:,1).^2+acc(:,2).^2).^.5;
-
-        avg_speed(gateinds) = mean(total_speed(gateinds));
-        avg_acc(gateinds) = mean(total_acc(gateinds));
-        acc_std(gateinds) =  std(total_acc(gateinds))
-        trip_duration(gateinds) = numel(gateinds);
-        distance(gateinds) = sum(total_speed(gateinds));
-    end
-%     total_speed(:) = (speed(:,1).^2+speed(:,2).^2).^.5;
-%     total_acc(:) = (acc(:,1).^2+acc(:,2).^2).^.5;
-    
-    addChannels({'time',...
-                 'speedx','speedy', 'total_speed',...
-                 'accx','accy','total_acc',...
-                 'avg_speed','avg_acc',...
-                 'acc_std','trip_duration',...
-                 'distance'},...
-        [time,...
-        speed, total_speed,...
-        acc, total_acc,...
-        avg_speed,avg_acc,...
-        acc_std, trip_duration, distance]);
-    return;
-        
-    %% diffusion map
-    data = session_data(gate_context, selected_channels);
-    kev = 15;
-    GraphDiffOpts = struct( 'Normalization','smarkov', ...
-                            'Epsilon',1, ...
-                            'kNN', 15, ...
-                            'kEigenVecs', kev, ...
-                            'Symmetrization', 'W+Wt'); ...
-
-    GD = GraphDiffusion(data', 0, GraphDiffOpts);
-    C = mat2cell([1:kev; GD.EigenVals(1:kev)']',ones(kev, 1));
-    [vg, vc] = addChannels( cellfun(@(x)sprintf('E%g (%2.2f)', x), C, 'UniformOutput', false),...
-                 GD.EigenVecs(:, 1:kev));
-             
-    auxInfo.what = 'Diffusion Map';
-    auxInfo.channels = selected_channels;
-    auxInfo.params = GraphDiffOpts;
-    
-    addAuxInfo(vg, vc, auxInfo);
-
-	return;
-    
-	%% reduce session data to current independant gates
-    new_sd = session_data([gates{1, 2}(:); gates{2, 2}(:); gates{3, 2}(:)], :);
-    gates{1, 2} = 1:numel(gates{1, 2});
-    gates{2, 2} = (1:numel(gates{2, 2}))+numel(gates{1, 2});
-    gates{3, 2} = (1:numel(gates{3, 2}))+numel(gates{1, 2})+numel(gates{2, 2});
-    put('gates', gates);
-    put('sessionData', new_sd);
-    return;
-
-    %% tsneEach
-    for gi=1:numel(selected_gates)
-        set(handles.lstGates, 'Value', selected_gates(gi)); % currently selected 
-        lstGates_Callback;
-        runTSNE(false);
-    end
-    return;
-
-   %% create testing shortcut on cellcycle repo dataset
-%     new_data = 50:4:70;
-%     new_data = new_data';
-%     new_data = [new_data, 210+ randn(size(new_data))*20];
-%     session_data(end+1:end+size(new_data,1), :) = 0;
-%     session_data(end-size(new_data,1)+1:end, selected_channels) = new_data;
-%     put('sessionData', session_data);
-%     addGate('with outliers', [gate_context, size(session_data,1)-size(new_data,1)+1:size(session_data,1)]);
-%     return;
-
-%     new_data = mynormalize(session_data(gate_context, selected_channels), 99);
-%     addChannels({'normed1', 'normed2'}, new_data);
-%     return;
-    
-  return;
-    
-    %% find clusters that are associated with unwanted gated data
-    all_data = session_data(gates{selected_gates(1), 2}, selected_channels);
-    unwanted_data = session_data(gates{selected_gates(2), 2}, selected_channels);
-    all_data_tabs = tabulate(all_data);
-    un_data_tabs = tabulate(unwanted_data);
-
-    
-    undata_prc(un_data_tabs(:,1)+1) = un_data_tabs(:,2)./all_data_tabs(un_data_tabs(:,1)+1,2);
-    unwanted_clusters = find(undata_prc>.6)-1;
-    
-    unwanted_points = ismember(all_data, unwanted_clusters);
-    new_gate_inds = gates{selected_gates(1), 2}(~unwanted_points);
-    
-    new_gate_name = {['thymus1 excld(' num2str(unwanted_clusters) ')']};
-    createNewGate(new_gate_inds, channel_names, new_gate_name);
-    return;
-    
-     %% for manu - reverse a result computed from a branch
-%     wanderlust = session_data(gate_context, selected_channels(1));
-%     branch     = session_data(gate_context, selected_channels(2));
-%     
-%     % 1 - trunk
-%     % 2 - traj start
-%     % 3 - other branch
-%     
-%     % normalize into realigned wanderlust
-%     wanderlust_new = wanderlust-min(wanderlust);
-%     wanderlust_new = wanderlust_new./max(wanderlust_new);
-%     
-% %     shift = 1-max(wanderlust_new(branch==1));
-%     
-%     % grab trunk points and reverse them and place them at zero
-%     wanderlust_new(branch==1) = max(wanderlust_new(branch==1))-wanderlust_new(branch==1);
-%     
-%     % now grab other branch and shift it to attach to the end of trunk
-%     wanderlust_new(branch==3) = wanderlust_new(branch==3) - (min (wanderlust_new(branch==3)) - max(wanderlust_new(branch==1)));
-% 
-%     % shift and reverse starting branch
-%     wanderlust_new(branch==2) = 1-wanderlust_new(branch==2);
-%     
-%     % add channels
-%     addChannels({'realigned_wander'}, wanderlust_new);
-%     
-%     return;
-    
-     return;
 
     %% gm fit for dna channels
     for i=selected_gates
