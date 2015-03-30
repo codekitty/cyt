@@ -30,7 +30,7 @@ function plot_as_function(x, Y, varargin)
 % 
 % Michelle Tadmor, Columbia University, 2013-2015
 
-Markers={'--','-', ':'};
+Markers={'-', '--', ':'};
 
 clear persistent_ksdensity;
 legend_flag = false;
@@ -44,6 +44,7 @@ svGolay = true;
 control_density = false;
 matPatchColors = [0.75 0.75 0.75; 0.6 0.6 0.6; 0 0 1];
 branch = zeros(1, numel(x));
+branchY = zeros(1, numel(x));
 
 for i=1:length(varargin)-1
     if(strcmp(varargin{i},'num_locs'))
@@ -68,6 +69,12 @@ for i=1:length(varargin)-1
         smoothness_factor = varargin{i+1};
     elseif(strcmp(varargin{i},'branch'))
         branch = varargin{i+1};
+    elseif(strcmp(varargin{i},'branchY'))
+        branchY = varargin{i+1};
+        Y_scale = branchY-median(branchY);
+        Y_scale(Y_scale<0) = Y_scale(Y_scale<0)./max(abs((Y_scale(Y_scale<0))));
+        Y_scale(Y_scale>0) = Y_scale(Y_scale>0)./max(Y_scale(Y_scale>0));
+
     end
 end
 
@@ -75,163 +82,105 @@ if (rank)
     x = tiedrank(x);
 end    
 
-weights = zeros(num_locs, length(x));
+real_weights = zeros(num_locs, length(x));
 weights_win = zeros(num_locs, length(x));
 Y_vals = zeros(num_locs, size(Y, 2));
 Y_errs = zeros(num_locs, size(Y, 2));
 Yn = size(Y, 1);
 
-% check weights cache
-hashMat = DataHash(x); 
-hashVal = DataHash(string2hash([avg_type hashMat]) + smoothness_factor);
-
 tic;
-% Check for cached
-[curr_path, ~, ~] = fileparts(mfilename('fullpath'));
-curr_path = [curr_path filesep];
-cachefilename = [curr_path 'cachePlotAlongTimeResults.mat'];
 
-%checking for old lnn results for the same data
-fileCheck = exist (cachefilename, 'file');
-
-% if no file
-% if (fileCheck==0) 
-%     % create new hash map
-%     mapMat = containers.Map(); 
-% else
-%     try
-%         % loading the old weights results
-%         file = load(cachefilename); 
-%         mapMat=file.mapMat;
-%     catch
-%         fileCheck=0;
-%         % create new hash map
-%         mapMat = containers.Map(); 
-%     end
-% end
-% 
-% % check for key in the hash map
-% check = isKey(mapMat,hashVal); 
-% 
-% % if weights found in cache
-% if (check==1) 
-%     % no need to run lnn again->returning old result
-%     value=values(mapMat,{hashVal});
-%     W = value{1};
-%     weights= W.weights;
-%     weights_win = W.weights_win;
-%     fprintf('weights loaded from cache: %gs\n', toc);
-% else
-    % compute a weight for each value (data point), at each plot location
-    for i=1:num_locs
-        weights(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), avg_type, smoothness_factor);
-%         weights_win(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), 'sliding', smoothness_factor);
-    end
-    fprintf('weights computed: %gs\n', toc);
-
-%     % while the hash map is too big removing the first element
-%     while length(mapMat)>5 
-%         lstKeys= keys(mapMat); 
-%         remove(mapMat,lstKeys(1));
-%     end
-% 
-%     % adding the name and lnn result to hashmap
-%     W.weights = weights;
-%     W.weights_win = weights_win;
-%     mapMat(hashVal)= W; 
-% end
-
-tic;
-%clean branch
-if any(branch)
-    pre_cleaning = weights;
-    
-    % locate trunk
-    branchids = unique(branch)';
-    maxidmean=0;
-    trunkid =-1;
-    for id=1:length(branchids)
-        idmean=mean(weights(1:10,:)*(branch==branchids(id)));
-        if idmean > maxidmean
-            maxidmean = idmean;
-            trunkid=id;
-        end
-    end
-    
-    % estimate branch point by quantity of branch flags along the trajectory 
-    weights_by_branch = sum(weights(:, branch==trunkid), 2);
-    weights_by_branch(:, end+1) = sum(weights(:, branch~=trunkid), 2);
-    branching_loc = find(weights_by_branch(:, 1)<weights_by_branch(:, 2));
-    branching_loc = branching_loc(1);
-    
-    % mute the effect of branch\trunk points beyond the branch point
-    weights(branching_loc:num_locs, branch==trunkid) = 0;
-    weights(1:branching_loc-1, branch~=trunkid) = 0;   
+% compute a weight for each value (data point), at each plot location
+for i=1:num_locs
+    real_weights(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), avg_type, smoothness_factor);
 end
-fprintf('estimating branch point: %gs\n', toc);
+fprintf('weights computed: %gs\n', toc);
 
+tic
 
-real_weights = weights;
-for bri=1:2
+% Compute weighted averages at each location
+y_vals_all = real_weights*Y./repmat(sum(real_weights, 2), 1, size(Y, 2));
+fprintf('Eighted marker values computed: %gs\n', toc);
+
+tic
+if normalize
+    % we want to normalize to [0 1]
+    mins = prctile(y_vals_all, 0, 1);
+    rngs = prctile(bsxfun(@minus, y_vals_all, mins), 100, 1); 
     
-    if any(branch)
-        tic
-        weights = real_weights;
-        weights(:, branch==bri) = 0;
-%         visible_locs = find(sum(weights, 2));
-%         if (bri ~= trunkid) % if on a branch
-%             trans_length = ceil(num_locs/20);
-%             for transi = 1:(trans_length-1)
-%                 weights(visible_locs(transi), branch~=bri) = (1-sqrt((transi/trans_length)))*pre_cleaning(visible_locs(transi), branch~=bri);
-%             end
-%         else
-%             weights(visible_locs(end)+1, :) = pre_cleaning(visible_locs(end)+1, :);
-%         end
-        fprintf('correcting weights for transitioning: %gs\n', toc);
-    end
+    y_vals_all = bsxfun(@minus, y_vals_all, mins);
+    y_vals_all = bsxfun(@rdivide, y_vals_all, rngs);
+
+    y_vals_all(y_vals_all<0) = 0;        
+    y_vals_all(y_vals_all>1) = 1;
+end
+fprintf('Normalization values computed: %gs\n', toc);
+    
+Y_vals_branches = cell(1,2);
+Y_vals_raws     = cell(1,2);
+
+% compute both sides of wine glass
+for bri=1:2
+    Y_scale = -1 * Y_scale;
+    
+    tic
+    weights = real_weights;
+    weights=weights.*repmat(1-(max(Y_scale(:)', 0)).^.005, num_locs, 1);
+    fprintf('correcting weights for transitioning: %gs\n', toc);
     
     % Compute weighted averages at each location
     X = linspace(min(x), max(x), num_locs);
-    Y_vals = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
+    
+    Y_vals_raws{bri} = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));    
 
-    if (svGolay)  
-        for col=1:size(Y_vals, 2)
-            Y_vals(:, col) = smooth(X, Y_vals(:, col),sqrt(num_locs*2), 'sgolay');
-        end          
-    end
-
-    Y_vals_raw = Y_vals;
-    if (normalize)
-        % we want to normalize while accounting for branches
-        y_vals_all = [];
-        for ubri=unique(branch)'
-            weights_tmp = real_weights;
-            weights_tmp(:, branch~=ubri) = 0;
-            % Compute weighted averages at each location
-            y_vals_all = [y_vals_all; weights_tmp*Y./repmat(sum(weights_tmp, 2), 1, size(Y, 2))];
-        end
-        % we want to normalize to [0 1]
-        mins = prctile(y_vals_all, 0, 1);
-        Y_vals = bsxfun(@minus, Y_vals, mins);
-
-        rngs = prctile(bsxfun(@minus, Y_vals_all, mins), 100, 1);
+    if (normalize)       
+        Y_vals = bsxfun(@minus, Y_vals_raws{bri}, mins);
         Y_vals = bsxfun(@rdivide, Y_vals, rngs);
 
         Y_vals(Y_vals<0) = 0;        
         Y_vals(Y_vals>1) = 1;
     end
+    
+    Y_vals_branches{bri} = Y_vals;    
+end
 
+Y_vals_main = Y_vals_branches{1};
+Y_vals = Y_vals_branches{2};
+
+% branch line - we are selective on the plotting
+for loc=num_locs:-1:2
+    markers = find(abs((Y_vals(loc-10,:) - Y_vals_main(loc-10, :))) < .25 & abs((Y_vals(loc,:) - Y_vals_main(loc, :))) < .3);
+    Y_vals(1:(loc-16),markers) = nan;
+%     Y_vals_main(1:(loc-20),markers) = y_vals_all(1:(loc-20),markers);
+
+    if all(isnan(Y_vals(loc,:)))
+        markers = isnan(Y_vals(num_locs-21,:));
+        Y_vals(:,markers) = nan;
+        break;
+    end        
+end
+Y_vals_main(isnan(Y_vals)) = y_vals_all(isnan(Y_vals))
+
+
+if (svGolay)  
+    for col=1:size(Y_vals, 2)
+        Y_vals_main(:, col) = smooth(X, Y_vals_main(:, col),sqrt(num_locs*2), 'sgolay');
+    end          
+end
+
+Y_vals_branches{1} = Y_vals_main;
+Y_vals_branches{2} = Y_vals;
+
+% iterate for plotting
+for bri=1:2
     matColors = distinguishable_colors(size(Y, 2));
     set(gca, 'ColorOrder', matColors);
     set(0, 'DefaultAxesColorOrder', matColors);
 
-    marker = '-';
-    if any(branch)
-        if bri~=trunkid
-            marker = Markers{bri};
-        end
-    end
+    % change marker selection
+    marker = Markers{bri};
 
+    Y_vals = Y_vals_branches{bri};
     plot(X, Y_vals(:, 1),marker,...
          'LineWidth', 4,...
          'markersize', 6,...
@@ -248,9 +197,11 @@ for bri=1:2
     end
     
     if (show_error)
+        Y_vals_raw = Y_vals_raws{bri};
 
         % compute variace along X (symmetically)
         for i=1:num_locs       
+            
             %symmetrical
             Y_errs = bsxfun(@minus,Y,(Y_vals_raw(i, :)));
 
@@ -258,7 +209,7 @@ for bri=1:2
             s = (M-1)/M;
             w_sum = sum(weights(i, :));
 
-            Y_valerrs(i, :) = sqrt((weights(i, :)*((Y_errs).^2))/(s*w_sum));
+            Y_valerrs(i, :) = .5*sqrt((weights(i, :)*((Y_errs).^2))/(s*w_sum));
         end
 
         if (normalize)
@@ -275,10 +226,7 @@ for bri=1:2
     end
 
     % Hold on if plotting more branch lines
-    if (any(branch))
-        hold on;
-    end
-
+	hold on;
 end
 
     % show density histogram under the plot to show the concentration 
@@ -299,7 +247,8 @@ end
     end
 
 if (legend_flag)
-    legend(remove_repeating_strings(labels), 'Interpreter', 'none');
+    l=legend(remove_repeating_strings(labels), 'Interpreter', 'none');
+    set(l, 'Location','NorthEastOutside');
 end
 
 % if (check==0)

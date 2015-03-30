@@ -279,6 +279,7 @@ put('gates', gates);
 
 if exist('regexps', 'var')
     old_regexps = retr('regexps');
+    
     for i = 1:size(regexps, 1)
         idx = strcmp(regexps{i, 1}, old_regexps(:,1));
         if ~any(idx)
@@ -1027,9 +1028,9 @@ function plot_along_time(time_channel)
     end
     
     % ==== TODO === ask by gate or by channels
-    by_gate = true;
+    by_gate = false;
     
-    arrWonderlust = session_data(gate_context, time_channel);
+    arrWanderlust = session_data(gate_context, time_channel);
     matData       = session_data(gate_context, selected_channels);
     
     smoothness_factor   = str2num(get(handles.txtWindowSize, 'String'));
@@ -1066,15 +1067,15 @@ function plot_along_time(time_channel)
 
     if normalizeX
         % display wonderlust results
-        arrWonderlust = arrWonderlust-min(arrWonderlust);
-%         arrWonderlust = arrWonderlust./prctile(arrWonderlust, 95);
-        arrWonderlust = arrWonderlust./max(arrWonderlust);
-        arrWonderlust(arrWonderlust>1) = 1;
-        arrWonderlust = 1-arrWonderlust;
+        arrWanderlust = arrWanderlust-min(arrWanderlust);
+         arrWanderlust = arrWanderlust./prctile(arrWanderlust, 97);
+%         arrWanderlust = arrWanderlust./max(arrWanderlust);
+        arrWanderlust(arrWanderlust>1) = 1;
+%         arrWonderlust = 1-arrWonderlust;
     end
     branch = any(strfind(channel_names{time_channel+1}, 'branch'));
     if (branch)
-    plot_as_function(1:size(matData,1), matData, ...
+    plot_as_function(arrWanderlust, matData, ...
                     'num_locs', 100,...
                     'avg_type', avg_type,...
                     'show_error', show_error,...
@@ -1083,7 +1084,7 @@ function plot_along_time(time_channel)
                     'rank', rankY,...
                     'svGolay', svGolay,...
                     'smooth', smoothness_factor,...
-                    'branch', session_data(gate_context, time_channel+1));
+                    'branchY', session_data(gate_context, time_channel+2));
     else
     plot_as_function(1:size(matData,1), matData, ...
                     'num_locs', 100,...
@@ -2658,6 +2659,7 @@ function hPlot = plotDensity
     vx = session_data(gate_context, selected_channels(1));
     vy = session_data(gate_context, selected_channels(2));
 
+    
     my_plot_dens(vx, vy,0);
            
 	xlabel(channel_names{selected_channels(1)}, 'Interpreter', 'none')
@@ -3379,11 +3381,6 @@ function runTSNE(normalize)
     if normalize 
         disp 'warning!! normalize not supported for tsne\n';
     end
-
-%     new_selected_channels = selected_channels(prctile(data, 99) >= 2.2);
-%     set(handles.lstChannels,'Value', new_selected_channels);
-%     data(:, prctile(data, 99) < 1.2) = [];
-    
     
     map = fast_tsne(data, 110);
 %     map = tsne(data, [], ndims);
@@ -3437,6 +3434,27 @@ function addAuxInfo(vg, vc, auxInfo)
     % save the info and the gates 
     put('gates', gates);
     put('auxInfos', auxInfos);
+end
+
+function auxInfo=getAuxInfo(vg, vc)
+   % retrieve the gates
+    gates = retr('gates');
+    
+    % retrieve auxinfo var
+    auxInfos = retr('auxInfos');
+    if isempty(auxInfos) || size(gates, 2) < 5
+        auxInfo = {};
+        return;
+    end
+        
+    % get the auxinfo index from the gate at specified channels
+    infoind = [];
+    for i=vg
+        vec = gates{i, 5};
+        infoind(end+1) = vec(vc(1));
+    end
+
+    auxInfo = auxInfos(unique(infoind));
 end
 
 function runWanderlust
@@ -5740,6 +5758,60 @@ function openEndedAction
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
     
+    addChannels({'tsne1','tsne2'}, thy3tsne, gates{3, 2}, 3);
+    return;
+    tsnech = [45 46];
+    for gi=2:3
+        gatedata = session_data(gates{gi,2},:);
+        tsnemap = gatedata(:, tsnech);
+        
+        m_size = numel(selected_channels);
+        opt_h = figure('Position', [100, 100, 300*m_size, 250]);
+
+        % print a row of images with a white label
+        for row=1:m_size
+            subplot('position', [(row-1)/m_size, 0, 1/m_size, 1]);
+            scatter(tsnemap(:,1), tsnemap(:,2), 50,mynormalize(gatedata(:, selected_channels(row)), 'percentile',100),  '.');
+            set(gca,'xtick',[])
+            set(gca,'xticklabel',[])
+            set(gca,'ytick',[])
+            set(gca,'yticklabel',[])
+            colormap jet;
+            title(channel_names{selected_channels(row)});%, 'background', 'w');
+        end
+        imgname = sprintf('out/thymus%g wanderlust', gi);
+        fprintf('\n...Printing image to file %s', imgname);
+
+        % save to picture to file
+        screen2png(opt_h,imgname);
+    end
+    
+    return;
+    infs =getAuxInfo(selected_gates, selected_channels);
+    
+    
+    
+    %% diffusion map
+    data = session_data(gate_context, selected_channels);
+    kev = 15;
+    GraphDiffOpts = struct( 'Normalization','smarkov', ...
+                            'Epsilon',1, ...
+                            'kNN', 15, ...
+                            'kEigenVecs', kev, ...
+                            'Symmetrization', 'W+Wt'); ...
+
+    GD = GraphDiffusion(data', 0, GraphDiffOpts);
+    C = mat2cell([1:kev; GD.EigenVals(1:kev)']',ones(kev, 1));
+    [vg, vc] = addChannels( cellfun(@(x)sprintf('E%g (%2.2f)', x), C, 'UniformOutput', false),...
+                 GD.EigenVecs(:, 1:kev));
+             
+    auxInfo.what = 'Diffusion Map';
+    auxInfo.channels = selected_channels;
+    auxInfo.params = GraphDiffOpts;
+    
+    addAuxInfo(vg, vc, auxInfo);
+
+	return;
 
     %% gm fit for dna channels
     for i=selected_gates

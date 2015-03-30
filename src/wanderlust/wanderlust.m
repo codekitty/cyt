@@ -114,6 +114,8 @@ for j=1:length(fn)
 %     end
 end
 
+G.Opts.plot_debug_branch = false;
+
 G.Opts
 
 % Build lNN graph
@@ -384,6 +386,32 @@ for graph_iter = 1:G.Opts.num_graphs
     % save initial solution - start point's shortest path distances
     t=[];
     t( 1,:)  = traj(1,:);
+    
+    % show three perspectives
+%     land =2;
+%     f=figure(20);
+%     scatter(data(:,1), data(:,2),150, '.b');
+%     hold on;
+%     scatter(data(iter_l(land),1), data(iter_l(land),2),500, '.r');
+%     print(f, '-dpng', sprintf('landmark%g position.png', land), '-r100');
+%     drawnow;
+% %     screen2png(f, sprintf('landmark%g position.png', land));
+%     hold off;
+%     cla;
+%     
+%     scatter(data(:,1), data(:,2),150,traj(land,:), '.');
+%     colormap jet;
+%     hold on;
+%     scatter(data(iter_l(land),1), data(iter_l(land),2),500, '.r'); 
+%     print(f, '-dpng', sprintf('landmark%g perspective.png', land), '-r100');
+% 
+%     scatter(data(:,1), data(:,2),150,dist(land,:), '.');
+%     colormap jet;
+%     hold on;
+%     scatter(data(iter_l(land),1), data(iter_l(land),2),500, '.r'); 
+%     print(f, '-dpng', sprintf('landmark%g distance.png', land), '-r100');
+
+    
 	t( end+1, : ) = sum( traj .* W );
     
 	% iteratively realign trajectory (because landmarks moved)
@@ -404,7 +432,7 @@ for graph_iter = 1:G.Opts.num_graphs
         end
 
         if (G.Opts.branch)
-            [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, : ),data, iter_l, dist,paths_l2l, G.Opts);
+%             [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, : ),data, iter_l, dist,paths_l2l, G.Opts);
             W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s), iter_l,Y);
         end
        
@@ -442,8 +470,9 @@ for graph_iter = 1:G.Opts.num_graphs
     
     if (G.Opts.branch)
         % Recalculate branches post reassignments
-        [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, : ), data, iter_l, ...
-            dist,paths_l2l, G.Opts);
+%         [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, : ), data, iter_l, ...
+%             dist,paths_l2l, G.Opts);
+bp=0;
         G.B(graph_iter, :) = RNK;
         G.diffdists = diffdists;
         G.bp(graph_iter) = bp;
@@ -534,7 +563,7 @@ function [ traj, dist, l, RNK,paths_l2l, diffdists,Y ] = trajectory_landmarks( s
         if G.Opts.branch
             tailk=20;
             [dists, ~, ~] = graphshortestpath( spdists, G.Opts.s,'METHOD','Dijkstra', 'directed', true);
-            tailband = find( dists>=(prctile(dists, 70)) );
+            tailband = find( dists>=(prctile(dists, 90)) );
             tailk = min([length(tailband), tailk, floor(length( n )/2)]); 
             n(randsample( 2:length( n ), tailk)) = randsample( tailband, tailk);
         end
@@ -555,43 +584,8 @@ function [ traj, dist, l, RNK,paths_l2l, diffdists,Y ] = trajectory_landmarks( s
     partial_order = [G.Opts.s;G.Opts.partial_order(:)]; % partial_order includes start point
 	l = [ partial_order; n(:) ]; % add extra landmarks if user specified
     
-    % prune out weak edges
-    prune = false;
-    if (prune)
-        res = 256;
-        [band, density, x, y] = kde2d(data, res);
-
-            % maybe remove edges jumping over low density regions?
-            % BW1 = edge(density,'canny', .001);
-            % imshow(BW1)
-            % set(gca,'YDir','normal')
-
-            %remove bad edges if the path to a landmark has a suspicious jump
-        mapX = round( interp1(diag(x), 1:res, data(:, 1), 'linear', 'extrap') );
-        mapY = round( interp1(diag(y), 1:res, data(:, 2), 'linear', 'extrap') );
-        recalc = true;
-        cou = 0;
-        while recalc && cou < 30
-            cou = cou+1;
-            [dist( 1, : ), paths, ~] = graphshortestpath( spdists, s, 'directed', false );
-            recalc = false;
-            for pathidx=2:numel(l) %iterate over path to each landmark
-                l_path = paths{l(pathidx)};
-                path_jumpsX = abs(mapX(l_path(2:end))-mapX(l_path(1:end-1)));
-                path_jumpsY = abs(mapY(l_path(2:end))-mapY(l_path(1:end-1)));
-                path_jumps = path_jumpsX + path_jumpsY;
-                bad_nodes = find(path_jumps > (mean(path_jumps) + 4*std(path_jumps)));
-                if any(bad_nodes)
-                    disp(sprintf('removing %g bad connections\n', numel(bad_nodes)));
-                    spdists(sub2ind(size(spdists), l_path(bad_nodes), l_path(bad_nodes+1))) = 0;
-                    spdists(sub2ind(size(spdists), l_path(bad_nodes+1), l_path(bad_nodes))) = 0;
-                    recalc = true;
-                end
-            end
-        end
-    end    
-
-	% calculate all shortest paths
+	if true
+    % calculate all shortest paths
     paths_l2l = cell(length(l),1);
     for li = 1:length( l )
         [dist( li, : ), paths, ~] = graphshortestpath( spdists, l( li ),'METHOD','Dijkstra', 'directed', false );
@@ -652,6 +646,29 @@ function [ traj, dist, l, RNK,paths_l2l, diffdists,Y ] = trajectory_landmarks( s
     if ~isempty(G.Opts.exclude_points)
         dist(:, G.Opts.exclude_points) = mean(mean(dist~=inf));
     end
+    else
+
+    kev = 15;
+    GraphDiffOpts = struct( 'Normalization','smarkov', ...
+                            'Epsilon',1, ...
+                            'kNN', 15, ...
+                            'kEigenVecs', kev, ...
+                            'Symmetrization', 'W+Wt'); ...
+
+    GD = GraphDiffusion(data', 0, GraphDiffOpts);
+    paths_l2l = cell(length( l ),1);
+    for li = 1:length( l )
+        dist(li, :) = 100*sqrt(sum(bsxfun(@minus, GD.EigenVecs(:, 2:kev), GD.EigenVecs(l(li), 2:kev)).^2, 2));
+        paths={};
+
+       [~, paths, ~] = graphshortestpath( spdists, l( li ),'METHOD','Dijkstra', 'directed', false );
+       paths_l2l{li} = paths(l);
+        if( G.Opts.verbose )
+            fprintf( 1, '.' );
+        end
+    end
+    end
+    
     if any(any(dist==inf))
         dist(dist==inf) = max(max(dist~=inf));
         if (G.Opts.verbose)
@@ -777,7 +794,7 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
     end
     
     % reassign to clusters based on branch point
-    pb = prctile(fork_p, 10);
+    pb = prctile(fork_p, 50);
     c_new = c;
     [~,I] = min(abs(dist(1:numel(landmarks), :)));
     RNK = c_new(I);
@@ -792,7 +809,7 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
     % Compute affinity matrix over landmark distances
     n = size(dist,2); % num points
     regular_points = 1:n;%setdiff(1:n, landmarks);
-    sigma = .1*std(dist(:));
+    sigma = .25*std(dist(:));
     Aff = exp((-.5*(1/sigma^2)).*dist(:, regular_points).^2);
     
     % make aff matrix a stochastic operator
@@ -803,7 +820,7 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
     
     if (Opts.plot_landmark_paths && (Opts.plot_debug_branch || numel(unique(c_new))<3))
 
-        figure('Color',[1 1 1]);
+        fh = figure('Color',[1 1 1]);
         
         subplot(2,2,1);       
         scatter(Y,t, 150, '.');
@@ -837,6 +854,8 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
         scatter(Opts.plot_data(landmarks(c_new==3),1),Opts.plot_data(landmarks(c_new==3),2),...
             ones(numel(landmarks(c_new==3)),1)*50, 'og');
        
+        print(f, '-dpng', sprintf('%giteration.png', timestamp), '-r100');
+        
         % show Q sorted by second eig vector, 
         figure('Color',[1 1 1]);
         
