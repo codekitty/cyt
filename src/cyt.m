@@ -557,7 +557,6 @@ end
 function lstChannels_Callback(~, ~, ~)
     handles = gethand;
     clusterFlag=get(handles.btnCluster,'Value');
-
     % -ignore- 
     % Workaround for bug where context menus don't show on mac.
     ctm = get(handles.lstChannels, 'UIContextMenu'); 
@@ -1322,7 +1321,7 @@ function plot_cluster_tsne
     gate_names        = gates(selected_gates, 1);
         
     %find cluster channel
-    selected_list_cluster      = get(handles.lstCluChannels, 'value');
+    selected_list_cluster = get(handles.lstCluChannels, 'value');
     cluster_channels      = retr('current_cluster_channels');
     cluster_channel = cluster_channels(selected_list_cluster);
         
@@ -1354,7 +1353,7 @@ function plot_cluster_tsne
     tSNE_out = []; %retr('tsneParams');
     if (isempty(tSNE_out)),
         if (size(centroids, 1) > 10)
-            tSNE_out = fast_tsne(centroids);    %running tSNE on centroids
+            tSNE_out = fast_tsne(centroids, [], 2);    %running tSNE on centroids
         else
             tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
         end
@@ -1372,9 +1371,6 @@ function plot_cluster_tsne
         tsne_col = cluster_mapping(:,3);
         scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, (dot_size+31)); %plotting
         legend(gate_names, 'Interpreter', 'none');
-        if (length(unique(tsne_col))>34)
-            uiwait(msgbox('The colors repeat themselves because there are too many points.','Too many points','warn'));
-        end
     elseif color_chan == cluster_channel,
         tsne_col = cluster_mapping(:,1);
         scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size+31); %plotting
@@ -1406,16 +1402,13 @@ function plot_cluster_tsne
             scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size+31); %plotting
 
             groups = [repmat('MC ', length(unique(tsne_col)), 1), num2str(unique(tsne_col))];
-            legend({groups},'Interpreter', 'none');%display legend 1
-
-            if (length(unique(tsne_col))>34)
-                uiwait(msgbox('The colors repeat themselves because there are too many points.','Too many points','warn'));
-            end
+            l=legend({groups},'Interpreter', 'none');%display legend 1
+            set(l, 'Location','NorthEastOutside');
         else
         
             tsne_col = zeros(size(centroids,1),1);
             for i=1:size(centroids,1),
-                sub_data = session_data(inds{cluster_mapping(i,3)},:);
+                sub_data = session_data(gate_context(inds{cluster_mapping(i,3)}),:);
                 tsne_col(i) = mean(sub_data(sub_data(:,cluster_channel) == cluster_mapping(i,4), color_chan));
                 %tsne_col(cluster_mapping(:,1) == i) = median(session_data(session_data(gate_context,cluster_channel) == i,color_chan));
             end
@@ -1429,6 +1422,7 @@ function plot_cluster_tsne
         end
     end
 
+    put('recenttsne', tSNE_out);
     xlabel('tSNE1');
     ylabel('tSNE2');
     
@@ -3376,7 +3370,7 @@ function runTSNE(normalize)
     	normalize= strcmp(selection,'Yes');
     end
     if false  
-        data = mynormalize(data, 'percentile', 99);      
+        data = mynormalize(data, 'percentile', 99.5);      
     end
     if normalize 
         disp 'warning!! normalize not supported for tsne\n';
@@ -3694,6 +3688,9 @@ end
 %       affected_g - vector of gate indices which were affected
 %       affected_c - vector of column indices which were affected
 function [affected_g, affected_c]=addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
+    fprintf('\nAdding %g columns of data (%g points) ', size(new_data,2), size(new_data, 1));
+    fprintf('\nany of new data is [%s] ', sprintf('%d ', any(new_data)));
+    
     handles = gethand;
 
     % init return variables
@@ -3745,14 +3742,16 @@ function [affected_g, affected_c]=addChannels(new_channel_names, new_data, opt_g
         p = find(d==1);
         m = find(d==-1);
         lr = find(m-p>=size(new_data, 2));
-        last_def_channel = undef_channel_ind - 1 + (p(lr) - 1);
+        last_def_channel = undef_channel_ind - 1 + (p(lr(1)) - 1);
+
+        fprintf('\ninserting at col %g ', last_def_channel+1);
     else
         last_def_channel = size(sessionData,2);
     end
         
     for i=selected_gates
         
-        % add new tsne channel names to gate
+        % add new channel names to gate
         channel_names = gates{i, 3};
         if (last_def_channel-numel(channel_names) > 0)
             % add blank\placeholder channel names
@@ -3777,6 +3776,8 @@ function [affected_g, affected_c]=addChannels(new_channel_names, new_data, opt_g
     columns = last_def_channel+(1:size(new_data, 2));
     sessionData(gate_context, columns) = new_data;
     affected_c = columns;
+    fprintf('\naffected columns %s ', sprintf('%d ',affected_c));
+    
     
     put('sessionData', sessionData);
     put('gates', gates);
@@ -3816,7 +3817,9 @@ function cluster(isKmeans)
         % run K-Means
         clust_alg = 'KMeans';
     	IDX = kmeans(data, k_clusters,'Display', 'iter', 'EmptyAction', 'singleton');
-    else 
+    else
+        printAuxInfo;
+        return;
         % run EMGM
         clust_alg = 'EMGM';
         [IDX, model, llh] = emgm(session_data(gate_context, selected_channels)', k_clusters);
@@ -3825,6 +3828,22 @@ function cluster(isKmeans)
     
     % add results to GUI
     addChannels({sprintf('%s%g',clust_alg, k_clusters)}, IDX);
+end
+
+function printAuxInfo
+    handles = gethand;
+
+    selected_gates    = get(handles.lstGates, 'Value');
+    selected_channels = get(handles.lstChannels, 'Value'); 
+    channel_names     = retr('channelNames');
+
+    infos = getAuxInfo(selected_gates, selected_channels);
+    for i=1:numel(infos)
+        info = infos{i};
+        fprintf('\ninfo for %s ', info.what);
+        fprintf('\nchannels [ %s] ', sprintf('%d ', info.channels));
+        fprintf('\nchannels names: \n%s ', sprintf('%s \n', channel_names{info.channels}));       
+    end  
 end
 
 function runAffinityPropegation
@@ -3962,14 +3981,15 @@ function btnGate_ClickedCallback(~, ~, ~, isPoly)
         cluster2gate=cluster_mapping(:,3);
         original_clusters=cluster_mapping(:,1);
         %finding previous tSNE
-        tSNE_out = [];
-        if (isempty(tSNE_out)),
-            if (size(centroids, 1) > 10)
-                tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
-            else
-                tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
-            end
-        end
+        tSNE_out = retr('recenttsne');
+
+%         if (isempty(tSNE_out)),
+%             if (size(centroids, 1) > 10)
+%                 tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
+%             else
+%                 tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
+%             end
+%         end
         
         
         setStatus('Waiting: Double click on node when finished');
@@ -4460,13 +4480,13 @@ function setStatus(sStatus)
     end
 end
 
-function tsne_each_gate(ndims)
+function tsne_each_gate(normalize)
 handles = gethand;
 selected_gates = get(handles.lstGates, 'Value');
 for i=selected_gates
     set(handles.lstGates, 'Value', i);
     lstGates_Callback;
-    runTSNE(ndims);
+    runTSNE(normalize);
 end
 end
 
@@ -5693,17 +5713,17 @@ function phenoEach
     end
             
     maxIDX=0;
-    for i=1:numel(selected_gates)
-        data = session_data(gates{selected_gates(i), 2}, selected_channels);
+%     for i=1:numel(selected_gates)
+        data = session_data(gate_context, selected_channels);
         
         [IDX, ~] = phenograph(data, k_neigh,'distance',distance);
         
         IDX=IDX(find(IDX))+maxIDX;
         maxIDX=max(IDX);
         
-        channelName=['PhenographK' num2str(k_neigh)];
-        addChannels({channelName}, IDX, gates{selected_gates(i), 2}, selected_gates(i));
-    end
+        channelName=['Phenograph K' num2str(k_neigh)];
+        addChannels({channelName}, IDX);
+%     end
     
     return;  
 
@@ -5758,20 +5778,73 @@ function openEndedAction
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
     
-    addChannels({'tsne1','tsne2'}, thy3tsne, gates{3, 2}, 3);
-    return;
-    tsnech = [45 46];
-    for gi=2:3
-        gatedata = session_data(gates{gi,2},:);
-        tsnemap = gatedata(:, tsnech);
+    wanderlusti = 202;
+    f=figure('Position', [100, 100, 1500, 450]);
+    for chi=1:numel(selected_channels)
+        X = session_data(gates{selected_gates(1),2}, wanderlusti);
+        B = session_data(gates{selected_gates(1),2}, wanderlusti+2);
+        Y = [];
+        for gi=1:numel(selected_gates)
+            gatei = selected_gates(gi);
+            gateinds = gates{gatei,2};
+            Xi = session_data(gateinds, wanderlusti);
+            Bi = session_data(gateinds, wanderlusti+2);
+            IDX = knnsearch(mynormalize([Xi,Bi],100),mynormalize([X,B],100), 'K',1);
+            Yi = session_data(gateinds, selected_channels(chi));
+            Y(:, end+1) = Yi(IDX);
+        end
+        cla;
         
+        X=mynormalize(X,100);
+        plot_as_function(X, Y, ...
+                        'num_locs', 100,...
+                        'avg_type', 'gaussian',...
+                        'show_error', false,...
+                        'labels', gates(selected_gates,1),...
+                        'normalize', false,...
+                        'rank', false,...
+                        'svGolay', true,...
+                        'smooth', .8,...
+                        'branchY', B);
+        title(channel_names{selected_channels(chi)});
+        axis([0 1 -.5 6]);
+        imgname = sprintf('out/timeoints 2 %s.png', channel_names{selected_channels(chi)});
+        fprintf('\n...Printing image to file %s', imgname);
+
+        % save to picture to file
+        screen2png(f,imgname);
+    end
+        
+    return;
+
+      tsnech = [204 202];
+%     wanderlust = 62;
+%     branchY    = 64;
+%     grayed_markers = [20 24 26 30];
+    
+    
+%     return;
+%        
+    for gi=1
+        gatedata = session_data(gate_context,:);
+        tsnemap = gatedata(:, tsnech);
+%         expressiondata = gatedata(:, [grayed_markers selected_channels]);
+
         m_size = numel(selected_channels);
         opt_h = figure('Position', [100, 100, 300*m_size, 250]);
 
         % print a row of images with a white label
         for row=1:m_size
             subplot('position', [(row-1)/m_size, 0, 1/m_size, 1]);
-            scatter(tsnemap(:,1), tsnemap(:,2), 50,mynormalize(gatedata(:, selected_channels(row)), 'percentile',100),  '.');
+
+%            plot_as_function(mynormalize(gatedata(:, wanderlust), 98),...
+%                 expressiondata, ...
+%                 'num_locs', 100,...
+%                 'labels', channel_names([selected_channels]),...
+%                 'smooth', .85,...
+%                 'branchY', gatedata(:, wanderlust));     
+            
+            scatter(tsnemap(:,1), tsnemap(:,2), 50,mynormalize(gatedata(:, selected_channels(row)), 'percentile',99.8),  '.');
             set(gca,'xtick',[])
             set(gca,'xticklabel',[])
             set(gca,'ytick',[])
@@ -5779,7 +5852,7 @@ function openEndedAction
             colormap jet;
             title(channel_names{selected_channels(row)});%, 'background', 'w');
         end
-        imgname = sprintf('out/thymus%g wanderlust', gi);
+        imgname = sprintf('out/DP tsne %s', channel_names{selected_channels(row)});
         fprintf('\n...Printing image to file %s', imgname);
 
         % save to picture to file
@@ -5787,12 +5860,11 @@ function openEndedAction
     end
     
     return;
-    infs =getAuxInfo(selected_gates, selected_channels);
-    
-    
-    
+% %     
+%     
+%     
     %% diffusion map
-    data = session_data(gate_context, selected_channels);
+    data = mynormalize(session_data(gate_context, selected_channels), 99.5);
     kev = 15;
     GraphDiffOpts = struct( 'Normalization','smarkov', ...
                             'Epsilon',1, ...

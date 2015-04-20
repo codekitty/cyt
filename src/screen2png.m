@@ -18,6 +18,6 @@ set(h,'PaperUnits','inches',...
      'PaperPosition',newpos)
 
 % print
-print(h,'-dpng', filename, '-r100');
+print(h,'-dpng', filename, '-r200');
 drawnow;
 end

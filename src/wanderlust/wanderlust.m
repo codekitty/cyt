@@ -374,7 +374,7 @@ for graph_iter = 1:G.Opts.num_graphs
         end
     end
     
-    % The weghing matrix must be a column stochastoc operator
+    % The weghing matrix must be a column stochastic operator
     W_full = W_full ./ repmat( sum( W_full ), size( W_full, 1 ), 1 );
         
     if (G.Opts.branch)
@@ -386,32 +386,6 @@ for graph_iter = 1:G.Opts.num_graphs
     % save initial solution - start point's shortest path distances
     t=[];
     t( 1,:)  = traj(1,:);
-    
-    % show three perspectives
-%     land =2;
-%     f=figure(20);
-%     scatter(data(:,1), data(:,2),150, '.b');
-%     hold on;
-%     scatter(data(iter_l(land),1), data(iter_l(land),2),500, '.r');
-%     print(f, '-dpng', sprintf('landmark%g position.png', land), '-r100');
-%     drawnow;
-% %     screen2png(f, sprintf('landmark%g position.png', land));
-%     hold off;
-%     cla;
-%     
-%     scatter(data(:,1), data(:,2),150,traj(land,:), '.');
-%     colormap jet;
-%     hold on;
-%     scatter(data(iter_l(land),1), data(iter_l(land),2),500, '.r'); 
-%     print(f, '-dpng', sprintf('landmark%g perspective.png', land), '-r100');
-% 
-%     scatter(data(:,1), data(:,2),150,dist(land,:), '.');
-%     colormap jet;
-%     hold on;
-%     scatter(data(iter_l(land),1), data(iter_l(land),2),500, '.r'); 
-%     print(f, '-dpng', sprintf('landmark%g distance.png', land), '-r100');
-
-    
 	t( end+1, : ) = sum( traj .* W );
     
 	% iteratively realign trajectory (because landmarks moved)

@@ -30,11 +30,11 @@ function plot_as_function(x, Y, varargin)
 % 
 % Michelle Tadmor, Columbia University, 2013-2015
 
-Markers={'-', '--', ':'};
+Markers={'-', ':', ':'};
 
 clear persistent_ksdensity;
 legend_flag = false;
-avg_type = 'gaussian_var';
+avg_type = 'gaussian';
 num_locs = 100;
 show_error = false;
 normalize = true;
@@ -74,6 +74,8 @@ for i=1:length(varargin)-1
         Y_scale = branchY-median(branchY);
         Y_scale(Y_scale<0) = Y_scale(Y_scale<0)./max(abs((Y_scale(Y_scale<0))));
         Y_scale(Y_scale>0) = Y_scale(Y_scale>0)./max(Y_scale(Y_scale>0));
+        Y_scale(Y_scale<-.3) = -1;        
+        Y_scale(Y_scale>.3) = 1;
 
     end
 end
@@ -99,6 +101,7 @@ fprintf('weights computed: %gs\n', toc);
 tic
 
 % Compute weighted averages at each location
+real_weights=robustweighing(real_weights);
 y_vals_all = real_weights*Y./repmat(sum(real_weights, 2), 1, size(Y, 2));
 fprintf('Eighted marker values computed: %gs\n', toc);
 
@@ -125,7 +128,7 @@ for bri=1:2
     
     tic
     weights = real_weights;
-    weights=weights.*repmat(1-(max(Y_scale(:)', 0)).^.005, num_locs, 1);
+    weights=weights.*repmat(1-(max(Y_scale(:)', 0)).^6, num_locs, 1);
     fprintf('correcting weights for transitioning: %gs\n', toc);
     
     % Compute weighted averages at each location
@@ -139,9 +142,12 @@ for bri=1:2
 
         Y_vals(Y_vals<0) = 0;        
         Y_vals(Y_vals>1) = 1;
+        Y_vals_branches{bri} = Y_vals;
+    else
+        Y_vals_branches{bri} = Y_vals_raws{bri};
     end
     
-    Y_vals_branches{bri} = Y_vals;    
+        
 end
 
 Y_vals_main = Y_vals_branches{1};
@@ -149,18 +155,25 @@ Y_vals = Y_vals_branches{2};
 
 % branch line - we are selective on the plotting
 for loc=num_locs:-1:2
-    markers = find(abs((Y_vals(loc-10,:) - Y_vals_main(loc-10, :))) < .25 & abs((Y_vals(loc,:) - Y_vals_main(loc, :))) < .3);
-    Y_vals(1:(loc-16),markers) = nan;
-%     Y_vals_main(1:(loc-20),markers) = y_vals_all(1:(loc-20),markers);
+    markers = find(abs((Y_vals(loc-10,:) - Y_vals_main(loc-10, :))) < .4 & abs((Y_vals(loc,:) - Y_vals_main(loc, :))) < .8);
+    Y_vals(1:(loc-13),markers) = nan;
 
     if all(isnan(Y_vals(loc,:)))
-        markers = isnan(Y_vals(num_locs-21,:));
+        markers = isnan(Y_vals(num_locs-19,:));
         Y_vals(:,markers) = nan;
         break;
     end        
 end
-Y_vals_main(isnan(Y_vals)) = y_vals_all(isnan(Y_vals))
-
+for coli=1:size(Y,2)
+    nans = find(isnan(Y_vals(:,coli)));
+    if numel(nans)>0 && numel(nans)<num_locs-2
+        zipi = nans(end)+1;
+        Y_vals(zipi+2, coli) = .2*y_vals_all(zipi+2, coli)+ .8*Y_vals(zipi+2, coli);
+        Y_vals(zipi+1, coli) = .5*y_vals_all(zipi+1, coli)+ .5*Y_vals(zipi+1, coli);
+        Y_vals(zipi, coli) = .8*y_vals_all(zipi, coli)+ .2*Y_vals(zipi, coli);
+    end
+end
+Y_vals_main(isnan(Y_vals)) = y_vals_all(isnan(Y_vals));
 
 if (svGolay)  
     for col=1:size(Y_vals, 2)
@@ -171,27 +184,45 @@ end
 Y_vals_branches{1} = Y_vals_main;
 Y_vals_branches{2} = Y_vals;
 
+% for bri=1:2
+% Y_vals = Y_vals_branches{bri};
+% for yi=1:4
+%    marker_vals = Y_vals(:, yi)';
+%    if ~all(isnan(marker_vals))
+%         inds = ~isnan(marker_vals);
+% 
+%         % plot light grey background
+%         X_fill = [X(inds), fliplr(X(inds))];        
+%         Y_fill = [marker_vals(inds)-.01, fliplr(marker_vals(inds)+.01)];
+%         fill(X_fill ,...
+%             Y_fill,...
+%             matColors(yi,:),'linestyle','none','facealpha',.5);
+%         hold on;
+%    end
+% end
+% end
 % iterate for plotting
 for bri=1:2
-    matColors = distinguishable_colors(size(Y, 2));
+%     matColors = distinguishable_colors(size(Y, 2));
+    matColors = jet(size(Y, 2));
     set(gca, 'ColorOrder', matColors);
     set(0, 'DefaultAxesColorOrder', matColors);
 
     % change marker selection
     marker = Markers{bri};
-
     Y_vals = Y_vals_branches{bri};
+    
     plot(X, Y_vals(:, 1),marker,...
-         'LineWidth', 4,...
-         'markersize', 6,...
+         'LineWidth', 2,...
+         'markersize', 4,...
          'Color', matColors(1, :)); 
 
     if (size(Y, 2)> 1)
         for col=2:size(Y, 2)
             hold on;
             plot(X, Y_vals(:, col),marker,...
-             'LineWidth', 4,...
-             'markersize', 6,...
+             'LineWidth', 2,...
+             'markersize', 4,...
              'Color', matColors(col, :));        
         end
     end
@@ -220,7 +251,14 @@ for bri=1:2
         for yi=1:size(Y, 2)
 
             % plot light grey background first for variance
-            fill( [X, fliplr(X)], [(Y_vals(:, yi)-Y_valerrs(:, yi)./2)', fliplr((Y_vals(:, yi)+Y_valerrs(:, yi)./2)')],...
+            X_fill = [X, fliplr(X)];
+            
+            Y_i = Y_vals(:, yi)';
+            Y_i_err = Y_valerrs(:, yi)';
+            
+            Y_fill = [Y_i-Y_i_err, fliplr(Y_i+Y_i_err)];
+            
+            fill( X_fill, Y_fill,...
                 matColors(yi,:),'linestyle','none','facealpha',.5);
         end
     end
@@ -293,6 +331,16 @@ function weights = compute_weights(points, loc, type, factor)
     
     else % default is strcmpi('gaussian', type)
         weights = ((2*pi*(min_std_dev)^2)^(-1))*exp(-.5*((points - loc)/min_std_dev).^2);
+    end
+end
+
+function weights=robustweighing(weights)
+    for loc=1:size(weights, 1)
+        % no single cell should contribute over 30% of the signal
+        to_slash = (weights(loc, :)./sum(weights(loc, :)) > .35);
+%         weights(loc, to_slash) = weights(loc, to_slash)./4;
+%         
+%         weights(loc, :) = weights(loc, :).*(exp(-weights(loc, :)./(max(weights(loc, :)))));
     end
 end
 
