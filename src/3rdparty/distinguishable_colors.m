@@ -116,6 +116,7 @@ function colors = distinguishable_colors(n_colors,bg,func)
     colors(i,:) = rgb(index,:);  % save for output
     lastlab = lab(index,:);  % prepare for next iteration
   end
+    colors = min(.8, colors+.15); % make pretty
 end
 
 function c = parsecolor(s)

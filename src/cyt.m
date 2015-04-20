@@ -1380,10 +1380,8 @@ function plot_cluster_tsne
         tsne_col = cluster_mapping(:,3);
         scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, (dot_size+31)); %plotting
         legend(gate_names, 'Interpreter', 'none');
-        if (length(unique(tsne_col))>34)
-            uiwait(msgbox('The colors repeat themselves because there are too many points.','Too many points','warn'));
-        end
-%     elseif color_chan == cluster_channel, %color by clusters
+
+        %     elseif color_chan == cluster_channel, %color by clusters
 %         tsne_col = cluster_mapping(:,1);
 %         scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size+31); %plotting
 %         groups = unique(tsne_col);
@@ -1424,14 +1422,11 @@ function plot_cluster_tsne
             end
             legend({groups},'Interpreter', 'none');%display legend 1
 
-            if (length(unique(tsne_col))>34)
-                uiwait(msgbox('The colors repeat themselves because there are too many points.','Too many points','warn'));
-            end
         else
         
             tsne_col = zeros(size(centroids,1),1);
             for i=1:size(centroids,1),
-                sub_data = session_data(inds{cluster_mapping(i,3)},:);
+                sub_data = session_data(gate_context(inds{cluster_mapping(i,3)}),:);
                 tsne_col(i) = mean(sub_data(sub_data(:,cluster_channel) == cluster_mapping(i,4), color_chan));
                 %tsne_col(cluster_mapping(:,1) == i) = median(session_data(session_data(gate_context,cluster_channel) == i,color_chan));
             end
@@ -1443,10 +1438,11 @@ function plot_cluster_tsne
             scatter(tSNE_out(:,1),tSNE_out(:,2), (dot_size+31), tsne_col, 'fill');
             colorbar;
             color_chan_names = get(handles.lstTsneColorBy,'String'); 
-            title(color_chan_names(color_chan));
+            title(color_chan_names(color_chan+1));
         end
     end
-
+    
+    put('recenttsne', tSNE_out);
     xlabel('tSNE1');
     ylabel('tSNE2');
     
@@ -3693,14 +3689,14 @@ function addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
         p = find(d==1);
         m = find(d==-1);
         lr = find(m-p>=size(new_data, 2));
-        last_def_channel = undef_channel_ind - 1 + (p(lr) - 1);
+        last_def_channel = undef_channel_ind - 1 + (p(lr(1)) - 1);
     else
         last_def_channel = size(sessionData,2);
     end
         
     for i=selected_gates
         
-        % add new tsne channel names to gate
+        % add new channel names to gate
         channel_names = gates{i, 3};
         if (last_def_channel-numel(channel_names) > 0)
             % add blank\placeholder channel names
@@ -3895,20 +3891,15 @@ function btnGate_ClickedCallback(~, ~, ~, isPoly)
             inds{i} = find(ismember(gateContext, gates{selGates(i),2}));
         end
     
-        %finding cluster centroids and mapping between clusters
+        % finding cluster centroids and mapping between clusters
         [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = ...
                         compute_cluster_centroids(...
                                  sessionData(gateContext, selectedChannels),...
                                  inds, ...
                                  sessionData(gateContext, cluster_channel)); 
     
-        % Compute tSNE map over centroids
-        if (size(centroids, 1) > 10)
-            tSNE_out = fast_tsne(centroids);    %running tSNE on centroids
-        else
-            tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
-        end 
-        
+        tSNE_out = retr('recenttsne');
+
         % get the choosen clusters from the user
         setStatus('Waiting: Double click on node when finished');
         gated_clusters = tsne_gate(gcf, tSNE_out, 1, isPoly); 
