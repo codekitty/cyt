@@ -1355,7 +1355,7 @@ function plot_cluster_tsne
     try
         % Compute tSNE map over centroids
         if (size(centroids, 1) > 10)
-            tSNE_out = fast_tsne(centroids);    %running tSNE on centroids
+            tSNE_out = fast_tsne(centroids, [], 3);    %running tSNE on centroids
         else
             tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
         end
@@ -2292,13 +2292,13 @@ function createMeta
             [meta_cluster_channel, ~] = kmeans(centroids, k_neigh,'distance',distance);
             metalable=['metaKmeansK' num2str(k_neigh)];
         end
-        %cumputing the meta cluster lable of the whole data
+        %computing the meta cluster lable of the whole data
         new_meta_cluster_channel=[];
         new_IndCellsOfGateIandCluster=[];
         for i=1:length(meta_cluster_channel)
                 cluster=cluster_mapping(i,1); % the original cluster of index i in the centroids
                 sel_gates=cluster_mapping(i,3); %the gate in index i in the centroids
-                indicesOfGateI=gates{sel_gates,2}; % indices of gate i in the data
+                indicesOfGateI=gates{selected_gates(sel_gates),2}; % indices of gate i in the data
                 cellsOfGateIandCluster=[sessionData(indicesOfGateI,cluster_channel)==cluster]; %the cells with the wanted gate and cluster
                 
                 IndCellsOfGateIandCluster= indicesOfGateI(cellsOfGateIandCluster); %their indices
@@ -2310,7 +2310,8 @@ function createMeta
 
     catch e
         uiwait(msgbox(sprintf('Finding meta clusters failed: %s', e.message),...
-            'Error','error'));  
+            'Error','error'));
+        disp(getReport(e,'extended'));
         return;        
     end
     
@@ -5574,7 +5575,6 @@ function phenoEach
     
     gates        = retr('gates');
     session_data  = retr('sessionData');
-    gate_context = retr('gateContext');
     selected_channels = get(handles.lstChannels,'Value');
     gate_names        = get(handles.lstGates, 'String');
     selected_gates = get(handles.lstGates, 'Value');
@@ -5625,6 +5625,7 @@ function phenoEach
     end
 
     allClusters=[];   
+    gate_context=[];   
     if mehtod==1 % phenograph each gate separately 
         hWaitbar = waitbar(0,'Computing PhenoGraph for each gate separately ...');
 
@@ -5642,6 +5643,7 @@ function phenoEach
             clusterLable(find(clusterLable))=clusterLable(find(clusterLable))+maxClu;            
             
             allClusters=[allClusters;clusterLable];
+            gate_context = [gate_context;gates{selected_gates(i), 2}];
         end
 
         waitbar(1, hWaitbar, 'Saving Results...');

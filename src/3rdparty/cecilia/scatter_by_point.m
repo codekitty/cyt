@@ -3,11 +3,8 @@ function scatter_by_point(x, y, gcolors, dot_size)
     groups = unique(gcolors);
     nGroups = numel(groups);
     
-    %color_per_group = distinguishable_colors(nGroups);
+    map = distinguishable_colors(nGroups);
     
-    %only 34 colors
-    map=distinguishable_colors(length(unique(gcolors)))
-
     lmap = length(map); 
     lgcolors = length(unique(gcolors));
     len_add = lgcolors - lmap;
