@@ -4,7 +4,7 @@ function screen2png(h,filename)
 
 % create directory if needed
 [pathstr, ~, ~] = fileparts(filename);
-if ~exist(pathstr, 'dir')
+if ~isempty(pathstr) && ~exist(pathstr, 'dir')
    mkdir(pathstr); 
 end
 

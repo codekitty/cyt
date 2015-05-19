@@ -363,7 +363,7 @@ for graph_iter = 1:G.Opts.num_graphs
 
 	% calculate weighed trajectory
     if strcmpi(G.Opts.voting_scheme, 'uniform')
-        W_full(:, :) = 1;
+        W_full(:, :) = ones(numel(iter_l), size(data,1));
     elseif strcmpi(G.Opts.voting_scheme, 'exponential')
         sdv = mean ( std ( dist) )*3;
         W_full = exp( -.5 * (dist / sdv).^2);
@@ -406,7 +406,7 @@ for graph_iter = 1:G.Opts.num_graphs
         end
 
         if (G.Opts.branch)
-%             [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, : ),data, iter_l, dist,paths_l2l, G.Opts);
+            [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, : ),data, iter_l, dist,paths_l2l, G.Opts);
             W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s), iter_l,Y);
         end
        
@@ -418,7 +418,7 @@ for graph_iter = 1:G.Opts.num_graphs
 		% check for convergence
         fpoint_corr = corr( t( realign_iter, : )', t( realign_iter - 1, : )' );
         fprintf( 1, '%2.5f...', fpoint_corr);
-		converged = fpoint_corr > 0.9999;
+		converged = fpoint_corr > 0.999;
         
         if (mod(realign_iter,16)==0)
             % break after too many alignments - something is wrong
@@ -828,17 +828,35 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
         scatter(Opts.plot_data(landmarks(c_new==3),1),Opts.plot_data(landmarks(c_new==3),2),...
             ones(numel(landmarks(c_new==3)),1)*50, 'og');
        
-        print(f, '-dpng', sprintf('%giteration.png', timestamp), '-r100');
+%         print(f, '-dpng', sprintf('%giteration.png', timestamp), '-r100');
         
         % show Q sorted by second eig vector, 
-        figure('Color',[1 1 1]);
+        f=figure('Color',[1 1 1]);
+        imagesc(diffdists);
+        set(gca,'xtick',[],'ytick',[]);
+        colormap jet;
+        drawnow;
+        screen2eps(f, 'Qraw.eps');
         
+        imagesc(diffdists(idx,idx));
+        set(gca,'xtick',[],'ytick',[]);
+        colormap jet;
+        drawnow;
+        screen2eps(f, 'Qsorted-eig.eps');
+
+        [~,idx2] = sort(t(landmarks));
+        imagesc(diffdists(idx2,idx2));
+        set(gca,'xtick',[],'ytick',[]);
+        colormap jet;
+        drawnow;
+        screen2eps(f, 'Qsorted-time.eps');
+
         subplot(1,2,1);
         imagesc(diffdists(idx,idx));
         set(gca,'xtick',[],'ytick',[]);
         drawnow;
-       	ax = gca;
-        ax.YTickLabel = cellfun(@num2str, num2cell(c(idx)), 'UniformOutput', false);
+%        	ax = gca;
+%         ax.YTickLabel = cellfun(@num2str, num2cell(c(idx)), 'UniformOutput', false);
         title('sorted by second eigen vector');
         colormap jet
 
@@ -848,8 +866,8 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
         imagesc(diffdists(idx_time,idx_time));
         set(gca,'xtick',[],'ytick',[]);
         drawnow;
-       	ax = gca;
-        ax.YTickLabel = cellfun(@num2str, num2cell(c(idx_time)), 'UniformOutput', false);
+%        	ax = gca;
+%         ax.YTickLabel = cellfun(@num2str, num2cell(c(idx_time)), 'UniformOutput', false);
         title('sorted by tau');
         colormap jet
         drawnow;
@@ -894,11 +912,11 @@ function plot_landmark_paths(data, paths, l)
     nData = size(data, 1);
     scatter (data(:, 1), data(:, 2), 2*ones(1, nData), '.b');
     hold on;
-    plot(data(l(1), 1), data(l(1), 2),20, 'Xr');
+    scatter(data(l(1), 1), data(l(1), 2),20, 'Xr');
     scatter(data(l, 1), data(l, 2), 20*ones(numel(l), 1), 'or');
     for p=1:numel(paths)
         pathsp = paths{p};
-        for q=1:numel(pathsp)
+        for q=p:numel(pathsp)
             pathq=pathsp{q};
             plot(data(pathq, 1), data(pathq, 2), 'k-');
         end

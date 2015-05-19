@@ -974,9 +974,12 @@ function plot_histograms(by_gates)
         set(gca,'ytick',[]);
         set(gca,'yticklabel',{});
         if exist('dists', 'var')
-            title(sprintf('%s\ndiff: %g', channelNames{channel}, dists(find(channel==selectedChannels))));
+            ht=title(sprintf('%s\ndiff: %g', channelNames{channel}, dists(find(channel==selectedChannels))));
         else
-            title(channelNames(channel));
+            ht=title(channelNames{channel});
+        end
+        if (numel(channelNames{channel}) > 20)
+            ht.FontSize = 8;
         end
     end
 
@@ -3818,8 +3821,8 @@ function cluster(isKmeans)
         clust_alg = 'KMeans';
     	IDX = kmeans(data, k_clusters,'Display', 'iter', 'EmptyAction', 'singleton');
     else
-        printAuxInfo;
-        return;
+%         printAuxInfo;
+%         return;
         % run EMGM
         clust_alg = 'EMGM';
         [IDX, model, llh] = emgm(session_data(gate_context, selected_channels)', k_clusters);
