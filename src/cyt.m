@@ -103,13 +103,14 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
 
     % initialize visualizations per selected channels options.
     case0PlotTypes = {...	% plot options for all channels
-          'Histograms by Gates', 	@(by_gate)plot_histograms(1);
-          'Histograms',             @(by_gate)plot_histograms(0)};
+        'Plot along CCT',        @plot_along_time};
+%           'Histograms', 	@(by_gate)plot_histograms(1)};
+%           'Histograms',             @(by_gate)plot_histograms(0)
 
     case1PlotTypes = {...	% plot options for a single selected channel
-          'Histograms by Gates',	@(by_gate)plot_histograms(1);
-          'Histograms',             @(by_gate)plot_histograms(0);
-          'Plot along time',        @plot_along_time};
+%           'Histograms',	@(by_gate)plot_histograms(1);
+%           'Histograms',             @(by_gate)plot_histograms(0);
+          'Plot along CCT',        @plot_along_time};
 %           'Plot sample clusters',   @plot_sample_clusters;
 %           'Plot meta clusters',     @plot_meta_clusters};
 
@@ -117,24 +118,24 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
     case2PlotTypes = {... 	% plot options for 2 selected channels
           'Scatter',                @plotScatter;
 %           'Density',                @plotDensity;
-          'Histograms by Gates',	@(by_gate)plot_histograms(1);
-          'Histograms',             @(by_gate)plot_histograms(0);
-          'Plot along time',        @plot_along_time};
+%           'Histograms',	@(by_gate)plot_histograms(1);
+%           'Histograms',             @(by_gate)plot_histograms(0);
+          'Plot along CCT',        @plot_along_time};
 %           'Plot sample clusters',   @plot_sample_clusters;
 %           'Plot meta clusters',     @plot_meta_clusters};
           
 	case3PlotTypes = {...	% plot options for 3 selected channels
           'Scatter',                @plotScatter;
-          'Histograms by Gates',	@(by_gate)plot_histograms(1);
-          'Histograms',             @(by_gate)plot_histograms(0);
-          'Plot along time',        @plot_along_time};
+%           'Histograms',	@(by_gate)plot_histograms(1);
+%           'Histograms',             @(by_gate)plot_histograms(0);
+          'Plot along CCT',        @plot_along_time};
 %           'Plot sample clusters',   @plot_sample_clusters;
 %           'Plot meta clusters',     @plot_meta_clusters};
       
 	case4PlusPlotTypes = {...	% plot options for 4 or more selected channels
-          'Histograms by Gates',	@(by_gate)plot_histograms(1);
-          'Histograms',             @(by_gate)plot_histograms(0);
-          'Plot along time',        @plot_along_time};
+%           'Histograms',	@(by_gate)plot_histograms(1);
+%           'Histograms',             @(by_gate)plot_histograms(0);
+          'Plot along CCT',        @plot_along_time};
 %           'Plot sample clusters',   @plot_sample_clusters;
 %           'Plot meta clusters',     @plot_meta_clusters};
 
@@ -142,6 +143,7 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
         case2PlotTypes, case3PlotTypes, case4PlusPlotTypes};
     put('plotTypes', plotTypes);
     put('lastPlotTypeTable', ones(1, numel(plotTypes)));
+    put('lastTimeChannel', 0);
 
     put('diff', 0);
     
@@ -294,7 +296,7 @@ function OpenMenuItem_Callback(~, ~, ~)
         currentfolder = '';
     end
 
-    files = uipickfiles('num',[1 inf],'out','cell', 'FilterSpec', [currentfolder '*.fcs']);
+    files = uipickfiles('num',1,'out','cell', 'FilterSpec', [currentfolder '*.mat']);
     if isequal(files,0) ~=0
         return 
     end
@@ -378,6 +380,20 @@ function OpenMenuItem_Callback(~, ~, ~)
             gates{i, 4} = files{i}; % opt cell column to hold filename
         end
         
+    elseif (strcmp(ext, '.mat')) % for Gabriele: assume only 1 file, empty session data
+           [~, fcsname, ~] = fileparts(files{1}); 
+           tic;
+           hWaitbar = waitbar(0,'reading mat file ...');
+           load(files{1}); % assume now we have data and featurenames
+           sessionData = data;
+
+           disp(sprintf('File loaded: %gs',toc));
+
+           gates = cell(1,4);
+           gates{1, 1} = char(fcsname);
+           gates{1, 2} = 1:size(sessionData,1);
+           gates{1, 3} = featurenames;
+           gates{1, 4} = files{1}; % opt cell column to hold filename
     else% assume files are fcs format (the only officialy supported format
         
         tic
@@ -462,44 +478,14 @@ function OpenMenuItem_Callback(~, ~, ~)
     close(hWaitbar);
 end
 
-%Due to diffrent names
-function channel_names=oldget_channelnames_from_header(fcshdr)
+function channel_names=get_channelnames_from_header(fcshdr)
     channel_names = {fcshdr.par.name2};
 	if isempty(channel_names{1})
         channel_names = {fcshdr.par.name};
 	end
 end
 
-
-function channel_names=get_channelnames_from_header(fcshdr)
-    channel_names1 = {fcshdr.par.name};
-    channel_names2 = {fcshdr.par.name2};
-	if (strcmp(channel_names1,channel_names2)==0)
-        channel_names = combineNames(channel_names1,channel_names2);
-    else
-        channel_names=channel_names2;
-	end
-end
-
-%combining between two names if there are different
-function channel_names = combineNames(channel_names1,channel_names2)
-    channel_names = cell(size(channel_names1));
-    if isempty(channel_names2{1})
-        channel_names = channel_names1;
-        add_channel=channel_names2;   
-    else
-        channel_names = channel_names2;
-        add_channel=channel_names1; 
-    end
-    
-    for i=1:length(channel_names)
-      % if i>3
-           channel_names{i}=strcat(channel_names{i},'_',add_channel{i});
-     %  end
-    end
-
-end
-% --------------------------------------------------------------------  
+% --------------------------------------------------------------------
 function PrintMenuItem_Callback
     [filename, pathname, ~] = uiputfile('*.png', 'Save Image');
 
@@ -967,22 +953,33 @@ function plot_along_time(time_channel)
     selected_gates    = get(handles.lstGates, 'Value');
     gate_names        = gates(selected_gates, 1);
     
-    time_channel      = get(handles.lstFunctionalXAxis, 'Value');
-    if isempty(time_channel)
-        [s,v] = listdlg('PromptString','Select a wonderlust channel (time):',...
-                'SelectionMode','single',...
-                'InitialValue', initTimeSelection,...
-                'ListString',channel_names);
-        if ~v
-            return;
+    time_channel      = retr('lastTimeChannel');
+%     time_channel      = get(handles.lstFunctionalXAxis, 'Value');
+
+    if time_channel==0
+        chcct = cellstrfnd(channel_names, 'cct');
+        if any(chcct)
+            s = find(chcct);
+            s = s(1);
+        else
+            initTimeSelection = numel(channel_names);
+            [s,v] = listdlg('PromptString','Select a Cell cycler trajectory feature:',...
+                    'SelectionMode','single',...
+                    'InitialValue', initTimeSelection,...
+                    'ListString',channel_names);
+            if ~v
+                return;
+            end
         end
         time_channel = s;
+        set(handles.lstFunctionalXAxis, 'Value', time_channel);
+        put('lastTimeChannel', time_channel);
+    else
+        time_channel = get(handles.lstFunctionalXAxis, 'Value');
     end
     
     % ==== TODO === ask by gate or by channels
     by_gate = false;
-    
-   
     
     arrWonderlust = session_data(gate_context, time_channel);
     matData       = session_data(gate_context, selected_channels);
@@ -1028,8 +1025,10 @@ function plot_along_time(time_channel)
     xlabel(channel_names{time_channel}); 
     if (numel(selected_channels) ==1)
         ylabel(channel_names{selected_channels(1)});
-        [mi, ~, ~, ~] = compute_dremi([arrWonderlust matData], .9);
-        title(sprintf('MI: %g', mi));
+%         [mi, ~, ~, ~] = compute_dremi([arrWonderlust matData], .9);
+%         title(sprintf('MI: %g', mi));
+    else
+        title('');
     end
 %     legend(legend_labels);
 
@@ -2247,9 +2246,9 @@ function hPlot=plotScatter
             end
 
         
-        if (~get(handles.chkDensity, 'Value'))
+%         if (~get(handles.chkDensity, 'Value'))
             myplotclr(vX, vY, vZ, vColor_discrete, 'o', clr, [min(vColor_discrete), max(vColor_discrete)], nSelChannels == 3);
-        end
+%         end
         box on;
         colorbar off;
 
@@ -2292,9 +2291,9 @@ function hPlot=plotScatter
                 end
 
                 
-        if (~get(handles.chkDensity, 'Value'))
+%         if (~get(handles.chkDensity, 'Value'))
                 myplotclr(vX, vY, vZ, vColor, 'o', colormap, clim, nSelChannels == 3);   
-        end
+%         end
                 colorbar;
                 caxis(clim);
                 
@@ -2330,9 +2329,9 @@ function hPlot=plotScatter
             end
             
             % plot 
-            if (~get(handles.chkDensity, 'Value'))
+%             if (~get(handles.chkDensity, 'Value'))
             myplotclr(vX, vY, vZ, vColor_discrete, 'o', clr, [min(vColor_discrete), max(vColor_discrete)], false)
-            end
+%             end
             colorbar off;
             hl=legend(cellfun(@(n)(num2str(n)), num2cell(unique(vColor)), 'UniformOutput', false));                    
 
@@ -2481,15 +2480,12 @@ function hPlot=plotScatter
         set(h, 'String', '');
 
         if (get(handles.chkDensity, 'Value'))
-            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 32);
-            
+            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 512);
+            hold on;
 %             cmap = jet;
 %             cmap(1, :) = [1, 1, 1];
 %             colormap(cmap);
-            
-            hold on;
-%             drawnow;
-            contour(x, y, density, 1024);
+            contour(x, y, density, 512);
             hold off;
         end
         if (get(handles.chkLog, 'Value'))
@@ -2757,12 +2753,12 @@ function runTSNE(normalize)
     tic;
     data = sessionData(gate_context, selected_channels);
         
-%     selection = questdlg('Compute over normalized data?' ,...
-%                      'Normalize',...
-%                      'Yes','No','Yes');
-%     if strcmp(selection,'Yes')
-%         data = mynormalize(data, 99);
-%     end
+    selection = questdlg('Compute over normalized data?' ,...
+                     'Normalize',...
+                     'Yes','No','Yes');
+    if strcmp(selection,'Yes')
+        data = mynormalize(data, 99);
+    end
 
 %     new_selected_channels = selected_channels(prctile(data, 99) >= 2.2);
 %     set(handles.lstChannels,'Value', new_selected_channels);
@@ -2800,31 +2796,36 @@ function runWanderlust
     data = sessionData(gate_context, selected_channels);
     
     params = retr('wanderlustParams');
-    if (isempty(params))
+    if (isempty(params) || ~isfield(params, 'l'))
         params = [];
-        params.l = 30;
-        params.k = 5;
-        params.num_landmarks = 20;
-        params.num_graphs = 25;
-        params.metric = 'cosine';
+        params.l = 15;
+        params.k = 8;
+        params.num_landmarks = 100;
+        params.num_graphs = 10;
+        params.metric = 'euclidean';
         params.normalize = true;
         params.selected_gate = numel(gate_names);
+    else
+        params.selected_gate = min(params.selected_gate,numel(gate_names));
     end
     
     params = wanderlustGUI('gates', gate_names, 'params', params);
-    if (isempty(params))
+    if (isempty(params) || ~isfield(params, 'l'))
         return;
     end
     put('wanderlustParams', params);
-	s = find(gates{params.selected_gate, 2}(1)==gate_context);
+	s = find(ismember(gate_context,gates{params.selected_gate, 2}));
     
     if (isempty(s))
         uiwait(msgbox('Selected starting points are not in the gate context (selected gates)',...
             'Invalid starting gate','error'));               
         return;
     end
-
+    si = randsample(1:numel(s), 1);
+    params.s = s(si);
+    
     try
+        % normalize data is asked
         if (params.normalize)
             data = data-repmat(prctile(data, 1, 1), size(data,1),1);
             data = data./repmat(prctile((data), 99, 1),size(data,1),1);
@@ -2833,21 +2834,24 @@ function runWanderlust
             data(data < 0) = 0;
             data(isinf(data)) = 0;
         end
+              
+        % cycler params
+        params.band_sample = true;
+        params.voting_scheme = 'exponential';
+        params.flock_landmarks = 2;
+%         params.plot_landmark_paths = true;
+%         params.plot_data = data(:,1:2);
         
-        [traj, lnn] = wanderlust(data,...
-            params.metric, params.k, params.l,...
-            params.num_graphs, s, params.num_landmarks,...
-            true, []);
+        % compute trajectory
+        G = wanderlust(data,params);
+                
+        % Save result
+        addChannels({'cct'}, mean(G.T, 1)', gate_context);
         
-        traj = mean(traj, 1);
-        traj = traj';
-        
-        addChannels({'wanderlust'}, traj, gate_context);
-
     catch e
-        disp(getReport(e,'extended'));        
-        msgbox(sprintf('Wanderlust failed: %s', e.message),...
-            'Error','error', 'modal');  
+        fprintf('Cycler failed: %s', getReport(e,'extended'));
+        uiwait(msgbox(sprintf('Cycler failed: %s', getReport(e,'basic')),...
+            'Error','error'));  
         return;        
     end
     
@@ -3106,50 +3110,17 @@ end
 % --------------------------------------------------------------------
 function btnGate_ClickedCallback(~, ~, ~, isPoly)
     handles = gethand;
-    
-    set(handles.btnGatePoly, 'Enable', 'off');
-    set(handles.btnGateRect, 'Enable', 'off');
-    
     sessionData  = retr('sessionData');
     gateContext   = retr('gateContext');
     selectedChannels = retr('selectedChannels');
     selGates = get(handles.lstGates, 'Value');
-
-    
     
     CH1 = selectedChannels(1);
     CH2 = selectedChannels(2);
 
-    mapped_data = sessionData(gateContext, [CH1 CH2]);
-    type = isPoly;
-    
-    if strcmp(type, 'rect')
-        h = imrect(gca);
-
-        disp('Adjust your selection. Double click on node when finished');
-        setStatus('Adjust your selection. Double click on node when finished');
-        rect = wait(h);
-
-        left = rect(1);
-        bottom = rect(2);
-        width = rect(3);
-        height = rect(4);
-
-        gate = find((mapped_data(:,1)>left) & (mapped_data(:,1)<left+width) & (mapped_data(:,2)>bottom) & (mapped_data(:,2)<bottom+height));
-    else
-        if strcmp(type, 'poly')
-            h = impoly(gca);
-        elseif strcmp(type, 'ellipse')
-            h = imellipse(gca);
-        end
-
-        disp('Adjust your selection. Double click on node when finished');
-        setStatus('Adjust your selection. Double click on node when finished');
-        vert = wait(h);
-
-        gate = find(inpoly(mapped_data, vert));
-    end
-    setStatus([sprintf('you have gated: %g data points %2.2f', numel(gate), (numel(gate)/numel(gateContext))*100) '%']); 
+    setStatus('Waiting: Double click on node when finished');
+    gate = tsne_gate(gcf, sessionData(gateContext, [CH1 CH2]), 1, isPoly);
+    setStatus(sprintf('you have gated: %g data points', numel(gate))); 
 
     if size(gate, 2) > 0
         % create new gate
@@ -3171,10 +3142,6 @@ function btnGate_ClickedCallback(~, ~, ~, isPoly)
             addChannels({'gate_source'}, gateSources, 1:nDataLength, indGateSource);
         end
     end
-    
-    set(handles.btnGatePoly, 'Enable', 'on');
-    set(handles.btnGateRect, 'Enable', 'on');
-    
 end
 
 function btnGateVal_Callback
@@ -3357,9 +3324,37 @@ function btnLoadGates_Callback(~, ~, ~)
     OpenMenuItem_Callback
 end
 
-% --- Executes on button press in btnTransformGate.
-function btnTransformGate_Callback(~, ~, ~)
-    cmiTransformGate_Callback;
+% --- Executes on button press in btnSplitCellCycle.
+function btnSplitCellCycle(~,~,~)
+
+    session_data = retr('sessionData');
+    gate_context = retr('gateContext');
+    featurenames = retr('channelNames');  
+    
+    
+%     gates = retr('gates');
+%     handles = gethand;
+%     selected_gates  = get(handles.lstGates, 'Value'); % currently selected    
+%     ris = [];
+%     for i=selected_gates
+% 
+%         gate_context = gates{i, 2};
+    
+    data = session_data(gate_context, :);
+    [G1, S, G2, M0, M1] = cyclerclassification_v2(featurenames, data);
+
+%         ris(end+1) = ri;
+    
+    addGate('G1', gate_context(G1));
+    addGate('S', gate_context(S));
+    addGate('G2', gate_context(G2));
+    addGate('M0', gate_context(M0));
+    addGate('M1', gate_context(M1));  
+
+%     end
+
+%     mean(ris(:))
+%     ris(:)
 end
 
 % --- Executes on button press in btnRemoveGate.
@@ -3431,7 +3426,7 @@ end
 
 % --------------------------------------------------------------------
 function showGettingStarted
-    open cyTutorial.ppt;
+    open Cycler_WorkflowManual.pdf;
 end
 
 function cmiAbout_CreateFcn(hObject, ~, ~)
@@ -4097,13 +4092,8 @@ function btnDiff_CreateFcn(hObject, ~, ~)
 end
 
 % --- Executes during object creation, after setting all properties.
-function btnTransformGate_CreateFcn(hObject, ~, ~)
-    placeIcon(hObject, 'clean.gif');
-end
-
-% --- Executes during object creation, after setting all properties.
-function btnContextMenu_CreateFcn(hObject, ~, ~)
-    placeIcon(hObject, 'gear.gif');
+function btnSplitCellCycle_CreateFcn(hObject, ~, ~)
+    placeIcon(hObject, 'cycle.png');
 end
 
 function btnIntersect_CreateFcn(hObject, ~, ~)
@@ -4745,10 +4735,8 @@ function phenoEach
     channel_names = retr('channelNames');
  
     % ask user for cluster count to recognize
-    defualtK = {'30'};
-    k_neigh = inputdlg('Enter Number of Neighbors to use: ',...
-                          'PhenoGraph', 1, defualtK);
-                     % 'cluster each', 1, {num2str(floor(sqrt(numel(gate_context)/2)))}); 
+    k_neigh = inputdlg('Enter number of neigh: ',...
+                          'cluster each', 1, {num2str(floor(sqrt(numel(gate_context)/2)))}); 
     
     if (isempty(k_neigh) || str2num(k_neigh{1}) == 0)
         return;
@@ -4756,36 +4744,11 @@ function phenoEach
     
     k_neigh = str2num(k_neigh{1});
     
-    % ask user for the distance matric
-    str={'Euclidean','Seuclidean','Cosine','Correlation','Spearman','Cityblock'};
-    [selection,ok] = listdlg('PromptString','Select Distance Metric:',...
-                'SelectionMode','single','ListString',str,'Name','PhenoGraph',...
-                'ListSize',[160 80])
-    
-    if (ok == 0) %if user press Cancel
-        return;
-    end
-    
-    distance = '';
-    
-    switch selection %defining distance from user selection
-        case 1
-            distance = 'euclidean';
-        case 2
-            distance = 'cosine';
-        case 3
-            distance = 'correlation';
-        case 4
-            distance = 'spearman';
-        case 5
-            distance = 'cityblock';
-    end
-            
     for i=1:numel(selected_gates)
         data = session_data(gates{selected_gates(i), 2}, selected_channels);
         
-        [IDX, ~] = phenograph(data, k_neigh,'distance',distance);
-        addChannels({'phenograph'}, IDX, gates{selected_gates(i), 2}, selected_gates(i));
+        [IDX, ~] = phenograph(data, k_neigh);
+        addChannels({'pheno'}, IDX, gates{selected_gates(i), 2}, selected_gates(i));
     end
     
     return;  
@@ -4811,32 +4774,6 @@ function kmeansEach
     return;  
 
 end
-
-
-% ------------
-% Run Phenograph on different gates, channels, K and distance matric in a
-% new window.
-% !!! Not ready for use - need to add channel by getting the output from
-% phenographGUI. !!!
-% ------------
-
-function runPhenograph
-    handles = gethand;
-    
-    gates        = retr('gates');
-    sessionData  = retr('sessionData');
-    gate_context = retr('gateContext');
-    selected_channels = get(handles.lstChannels,'Value');
-    gate_names        = get(handles.lstGates, 'String');
-    selected_gates = get(handles.lstGates, 'Value');
-    [~, channel_names] = getSelectedIndices(selected_gates);
-    
-    phenographGUI('session_data',sessionData,'gates',gates, 'gatesNames', gate_names, 'channelNames', channel_names);
-    
-    
-end
-
-
 
 % ------------
 % compare between two maps

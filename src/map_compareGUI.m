@@ -128,10 +128,10 @@ function varargout = map_compareGUI_OutputFcn(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 
 % Get default command line output from handles structure
-%varargout{1} = handles.output;
+varargout{1} = handles.output;
 
 % The figure can be deleted now
-%delete(handles.figure1);
+delete(handles.figure1);
 end
 
 % --- Executes when user attempts to close figure1.
@@ -175,20 +175,23 @@ function btnCompute_Callback(hObject, eventdata, handles)
     session_data = getappdata(0,'data');
     selected_channels1 = get(handles.lstChannels1, 'Value');
     selected_channels2 = get(handles.lstChannels2, 'Value'); 
-
-    
-    nMeasure = get(handles.measure, 'Value');
-    strMeasure = get(handles.measure, 'String');
-    measuring_type = strMeasure{nMeasure};
     
     map1 = session_data(:, selected_channels1);
     map2 = session_data(:, selected_channels2);
     
-    cost= compare_maps(map1,map2,nMeasure);
+    cost= compare_maps(map1,map2);
     output=num2str(cost);
-
-    output=[measuring_type ': ' output];
+    output=['Jensen-Shannon divergence: ' output];
     h = msgbox(output);
+
+    %handles.output = W;
+
+    % Update handles structure
+    %guidata(hObject, handles);
+
+    % Use UIRESUME instead of delete because the OutputFcn needs
+    % to get the updated handles structure.
+    %uiresume(handles.figure1);
 end
 
 % --- Executes on button press in btnDonel.
@@ -205,7 +208,6 @@ guidata(hObject, handles);
 % Use UIRESUME instead of delete because the OutputFcn needs
 % to get the updated handles structure.
 uiresume(handles.figure1);
-delete(handles.figure1);
 end
 
 % --- Executes on selection change in lstChannels.
@@ -250,17 +252,4 @@ function lstChannels2_CreateFcn(hObject, eventdata, handles)
     if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
         set(hObject,'BackgroundColor','white');
     end
-end
-
-
-function measuringType_Callback(hObject, eventdata, handles)
-
-end
-
-
-function measuringType_CreateFcn(hObject, eventdata, handles)
-
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
 end

@@ -78,42 +78,15 @@ if (rank)
 end    
 
 weights = zeros(num_locs, length(x));
-Y_vals = zeros(num_locs, size(Y, 2));
-Y_errs = zeros(num_locs, size(Y, 2));
-Yn = size(Y, 1);
 
 % compute a weight for each value (data point), at each plot location
 for i=1:num_locs
 	weights(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), avg_type, smoothness_factor);
 end
 
-%clean branch
-if any(branch)
-    pre_cleaning = weights;
-
-    weights_by_branch = sum(weights(:, branch==0), 2);
-    weights_by_branch(:, end+1) = sum(weights(:, branch~=0), 2)
-    branching_loc = find(weights_by_branch(:, 1)<weights_by_branch(:, 2));
-    weights(branching_loc(1):num_locs, branch==0) = 0;
-    weights(1:branching_loc(1)-1, branch~=0) = 0;
-   
-end
-
 real_weights = weights;
 for bri=unique(branch)'
-    if any(branch)
-        weights = real_weights;
-        weights(:, branch~=bri) = 0;
-        visible_locs = find(sum(weights, 2));
-        if (bri ~= 0) % if on a branch
-            trans_length = ceil(num_locs/10);
-            for transi = 1:(trans_length-1)
-                weights(visible_locs(transi), branch~=bri) = (1-transi/trans_length)*pre_cleaning(visible_locs(transi), branch~=bri);
-            end
-        else
-            weights(visible_locs(end)+1, :) = pre_cleaning(visible_locs(end)+1, :);
-        end
-    end
+
 % Compute weighted averages at each location
 X = linspace(min(x), max(x), num_locs);
 Y_vals = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
@@ -142,25 +115,22 @@ if control_density
 
 end
 
-if (svGolay)  
+if (svGolay && ~show_error) % do not smooth when showing variance
     for col=1:size(Y_vals, 2)
         Y_vals(:, col) = smooth(X, Y_vals(:, col),sqrt(num_locs*2), 'sgolay');
     end          
 end
 
-Y_vals_orig = Y_vals;
+% Y_vals(2:end,:) = diff(Y_vals);
+% Y_vals(1,:) = 0;
+Y_vals_raw = Y_vals;
 if (normalize)
-    % we want to normalize while accounting for branches
-    y_vals_all = [];
-    for bri=unique(branch)'
-        weights = real_weights;
-        weights(:, branch~=bri) = 0;
-        % Compute weighted averages at each location
-        y_vals_all = [y_vals_all; weights*Y./repmat(sum(weights, 2), 1, size(Y, 2))];
-    end
-    Y_vals = Y_vals-repmat(prctile(y_vals_all, 1, 1), size(Y_vals,1),1);
-    y_vals_all = y_vals_all-repmat(prctile(y_vals_all, 1, 1), size(y_vals_all,1),1);
-    Y_vals = Y_vals./repmat(prctile((y_vals_all), 97, 1),size(Y_vals,1),1);
+    % we want to normalize to [0 1]
+    mins = prctile(Y_vals, 0, 1);
+    Y_vals = bsxfun(@minus, Y_vals, mins);
+
+    rngs = prctile(Y_vals, 100, 1);
+    Y_vals = bsxfun(@rdivide, Y_vals, rngs);
 end
 
 matColors = distinguishable_colors(size(Y, 2));
@@ -176,22 +146,31 @@ if (size(Y, 2)> 1)
 end
 if (show_error)
 
+    % compute variace along X (symmetically)
     for i=1:num_locs       
-        %symmetrical for error bars
-        Y_errs(i, :) = weights(i, :)*(((Y-repmat(Y_vals_orig(i, :),Yn,1)-repmat(prctile(Y_vals, 1, 1), size(Y,1),1))./...
-            repmat(prctile((Y_vals_orig), 99, 1),size(Y,1),1))).^2/sum(weights(i, :));        
+        %symmetrical
+        Y_errs = bsxfun(@minus,Y,(Y_vals_raw(i, :)));
+        
+        M = sum(weights(i, :)~=0);
+        s = (M-1)/M;
+        w_sum = sum(weights(i, :));
+        
+        Y_valerrs(i, :) = sqrt((weights(i, :)*((Y_errs).^2))/(s*w_sum));
     end
     
+	if (normalize)
+        Y_valerrs = bsxfun(@rdivide,Y_valerrs,rngs);
+	end
+     
+    % plot the variance as a pretty translucent cloud around line
     for yi=1:size(Y, 2)
+        
         % plot light grey background first for variance
-        fill([X, fliplr(X)], [(Y_vals(:, yi)-Y_errs(:, yi))', fliplr((Y_vals(:, yi)+Y_errs(:, yi))')],...
+        fill( [X, fliplr(X)], [(Y_vals(:, yi)-Y_valerrs(:, yi)./2)', fliplr((Y_vals(:, yi)+Y_valerrs(:, yi)./2)')],...
             matColors(yi,:),'linestyle','none','facealpha',.5);
     end
 end
 
-if (any(branch))
-    hold on;
-end
 end
 if ~(rank || control_density)    
     try
@@ -208,58 +187,6 @@ end
 
 if (legend_flag)
     legend(remove_repeating_strings(labels), 'Interpreter', 'none');
-end
-
-if (make_distribution_movie && askuser('Are you sure you''d like to make a movie?'));
-    
-    distances_per_window = cell(num_locs);
-    for i=1:num_locs
-        distances_per_window{i} = pdist2(Y(weights(i, :) > .4, :), Y(weights(i, :) > .4, :), 'cosine');
-    end
-
-    current_figure = gcf;
-    try 
-    fid = figure;
-    hold on;
-    [f,xi] = ksdensity(distances_per_window{1}(:),'npoints',200);
-    hLine_new = plot(xi, f);
-    title(sprintf('%.2f: %g points', (1/num_locs), sum(weights(1, :) > .4)));
-
-    % Set up the movie.
-    writerObj = VideoWriter(sprintf('%s.avi', movie_name)); % Name it.
-    writerObj.FrameRate = 10;           % How many frames per second.
-
-    open(writerObj); 
-
-    for i=2:num_locs
-        hLine = hLine_new;
-
-        figure(fid); % Makes sure you use your desired frame.
-        if (isempty(distances_per_window{i}(:)))
-            xi = 0;
-            f = 0;
-        else
-            [f,xi] = ksdensity(distances_per_window{i}(:),'npoints',250);
-        end
-        hLine_new = plot(xi, f);
-        title(sprintf('%.2f: %g points', (i/num_locs), sum(weights(i, :) > .4)));
-        delete(hLine);
-
-
-        %if mod(i,4)==0, % Uncomment to take 1 out of every 4 frames.
-            frame = getframe(gcf); % 'gcf' can handle if you zoom in to take a movie.
-            writeVideo(writerObj, frame);
-        %end
-
-    end
-    hold off
-    close(writerObj); % Saves the movie.
-    
-    catch e
-        % Return to base figure
-        set(0,'CurrentFigure', current_figure);
-        disp (getReport(e));
-    end
 end
 
 end

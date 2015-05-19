@@ -1,17 +1,13 @@
-function cost= compare_maps(map1,map2, measureType)
+function cost= compare_maps(map1,map2)
 % This function is using t-SNE's cumputing of matrix P and matrix Q in a 
 % low-dimensional maps.
 
     P= compute_Pvalues(map1);
     Q= compute_Pvalues(map2);
     
-    if (measureType == 1)
-        cost=kldivergences(P,Q);
-    else
-        cost = JSdivergences(P,Q);
-    end
+    const = sum(P(:) .* log(P(:)));                                        % constant in KL divergence
+    cost = const - sum(P(:) .* log(Q(:)));                                 %Kullback-Leibler divergence of the maps
 end
-
 
 function value = compute_Pvalues(map) 
 % Computing joint probability that point i and j are neighbors
@@ -23,13 +19,4 @@ function value = compute_Pvalues(map)
     value = max(num ./ sum(num(:)), realmin); 
 end
 
-function cost = kldivergences(P,Q)                                         %Kullback-Leibler divergence of the maps
-    const = sum(P(:) .* log(P(:)));                                        % constant in KL divergence
-    cost = const - sum(P(:) .* log(Q(:)));   
-    
-end
 
-function cost = JSdivergences(P,Q)                                         %Jensen-Shannon divergence of the maps
-    M = 0.5*(P + Q);
-    cost = 0.5*(kldivergences(P,M) + kldivergences(Q,M));   
-end

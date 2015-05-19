@@ -1,4 +1,4 @@
-function [fcsdat, fcshdr, fcsdatscaled, fcsdatcomp] = fca_readfcs(filename)
+function [fcsdat, fcshdr, fcsdatscaled] = fca_readfcs(filename)
 % [fcsdat, fcshdr, fcsdatscaled] = fca_readfcs(filename);
 %
 % Read FCS 2.0 and FCS 3.0 type flow cytometry data file and put the list mode  
@@ -18,33 +18,7 @@ function [fcsdat, fcshdr, fcsdatscaled, fcsdatcomp] = fca_readfcs(filename)
 % operation for the "ith" parameter:  
 % fcsdatscaled(:,i) = ...
 %   10.^(fcsdat(:,i)/fcshdr.par(i).range*fcshdr.par(i).decade;);
-%
-% 
-% Copyright (c) 2011, Laszlo Balkay
-% All rights reserved.
-% 
-% Redistribution and use in source and binary forms, with or without
-% modification, are permitted provided that the following conditions are
-% met:
-% 
-%     * Redistributions of source code must retain the above copyright
-%       notice, this list of conditions and the following disclaimer.
-%     * Redistributions in binary form must reproduce the above copyright
-%       notice, this list of conditions and the following disclaimer in
-%       the documentation and/or other materials provided with the distribution
-% 
-% THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-% AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-% IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-% ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
-% LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-% CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-% SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-% INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-% CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-% ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-% POSSIBILITY OF SUCH DAMAGE.
-%
+
 % Ver 2.5
 % 2006-2009 / University of Debrecen, Institute of Nuclear Medicine
 % Laszlo Balkay 
@@ -63,9 +37,8 @@ function [fcsdat, fcshdr, fcsdatscaled, fcsdatcomp] = fca_readfcs(filename)
 % Gavin A Price
 % 
 % if noarg was supplied
-
 if nargin == 0
-     [FileName, FilePath] = uigetfile('*.*','Select fcs file');
+     [FileName, FilePath] = uigetfile('*.*','Select fcs2.0 file');
      filename = [FilePath,FileName];
      if FileName == 0;
           fcsdat = []; fcshdr = [];
@@ -103,10 +76,6 @@ end
 fid = fopen(filename,'r','b');
 fcsheader_1stline   = fread(fid,64,'char');
 fcsheader_type = char(fcsheader_1stline(1:6)');
-%TMP: update to include FCS 3.1
-if strcmp(fcsheader_type,'FCS3.1')
-    fcsheader_type='FCS3.0';
-end
 %
 %reading the header
 %
@@ -117,9 +86,9 @@ if strcmp(fcsheader_type,'FCS1.0')
     return;
 elseif  strcmp(fcsheader_type,'FCS2.0') || strcmp(fcsheader_type,'FCS3.0') % FCS2.0 or FCS3.0 types
     fcshdr.fcstype = fcsheader_type;
-    FcsHeaderStartPos   = str2num(char(fcsheader_1stline(11:18)'));
-    FcsHeaderStopPos    = str2num(char(fcsheader_1stline(19:26)')); %RLF edited to full 8-byte length
-    FcsDataStartPos     = str2num(char(fcsheader_1stline(27:34)')); %RLF edited to full 8-byte length
+    FcsHeaderStartPos   = str2num(char(fcsheader_1stline(16:18)'));
+    FcsHeaderStopPos    = str2num(char(fcsheader_1stline(23:26)'));
+    FcsDataStartPos     = str2num(char(fcsheader_1stline(31:34)'));
     status = fseek(fid,FcsHeaderStartPos,'bof');
     fcsheader_main = fread(fid,FcsHeaderStopPos-FcsHeaderStartPos+1,'char');%read the main header
     warning off MATLAB:nonIntegerTruncatedInConversionToChar;
@@ -130,7 +99,7 @@ elseif  strcmp(fcsheader_type,'FCS2.0') || strcmp(fcsheader_type,'FCS3.0') % FCS
     if fcsheader_main(1) == 12
         mnemonic_separator = 'FF';
     elseif fcsheader_main(1) == 9
-        mnemonic_separator = 'TAB'; %RLF
+        mnemonic_separator = 'TAB'; %added by RLF August 2010
     else
         mnemonic_separator = char(fcsheader_main(1));
     end
@@ -141,37 +110,41 @@ elseif  strcmp(fcsheader_type,'FCS2.0') || strcmp(fcsheader_type,'FCS3.0') % FCS
         return;
     end
     fcshdr.TotalEvents = str2num(get_mnemonic_value('$TOT',fcsheader_main, mnemonic_separator));
-    if fcshdr.TotalEvents == 0
-        fcsdat = 0;
-        fcsdatscaled = 0;
-        return
-    end
     fcshdr.NumOfPar = str2num(get_mnemonic_value('$PAR',fcsheader_main, mnemonic_separator));
     fcshdr.Creator = get_mnemonic_value('CREATOR',fcsheader_main, mnemonic_separator);
-    %comp matrix reader added by RLF 12_15_10
-    comp = get_mnemonic_value('SPILLOVER',fcsheader_main,mnemonic_separator); 
+    %comp matrix reader added by rlf 12_15_10
+    comp = get_mnemonic_value('SPILL',fcsheader_main,mnemonic_separator); 
     if ~isempty(comp)
-        %%%
-        compcell=regexp(comp,',','split');
-        nc=str2double(compcell{1});        
-        fcshdr.CompLabels=compcell(2:nc+1);
-        fcshdr.CompMat=reshape(str2double(compcell(nc+2:end)'),[nc nc])';       
+        commas=strfind(comp,',');
+        nc=str2double(comp(1:commas(1)-1));  %first element is number of comped columns
+        fc=cell(1,nc);
+        for i=1:nc
+            fc{i}=comp(commas(i)+1:commas(i+1)-1); %list of labels of comped columns
+        end
+        CompMat=zeros(1,nc^2);
+        for i=nc+1:length(commas)-1
+            CompMat(i-nc)=str2double(comp(commas(i)+1:commas(i+1)));
+        end
+        CompMat(end)=str2double(comp((commas(end)+1):end));
+        CompMat=-reshape(CompMat,[nc nc]);
+        for i=1:nc
+            CompMat(i,i)=1;
+        end
+        fcshdr.CompLabels=fc;
+        fcshdr.CompMat=CompMat';
     else
         fcshdr.CompLabels=[];
-        fcshdr.CompMat=[]; 
-    end
-    plate = get_mnemonic_value('PLATE NAME',fcsheader_main,mnemonic_separator);
-    if ~isempty(plate)
-        fcshdr.plate=plate;
+        fcshdr.CompMat=[];      
     end
     %%%%%%%%%%%%
-    
     %%%%%%added by RLF to account for large files
     if FcsDataStartPos == 0
     FcsDataStartPos = str2num(get_mnemonic_value('$BEGINDATA',fcsheader_main, mnemonic_separator));    
     end
     %%%%%%%%%%%%%%%%%%%%%
-  
+
+
+        
     for i=1:fcshdr.NumOfPar
         fcshdr.par(i).name = get_mnemonic_value(['$P',num2str(i),'N'],fcsheader_main, mnemonic_separator);
         fcshdr.par(i).name2 = get_mnemonic_value(['$P',num2str(i),'S'],fcsheader_main, mnemonic_separator);
@@ -189,6 +162,19 @@ elseif  strcmp(fcsheader_type,'FCS2.0') || strcmp(fcsheader_type,'FCS3.0') % FCS
                 par_exponent_str = '0,0';
             end
         end
+   
+%         fcshdr.par(i).decade = str2num(par_exponent(1));
+%         if fcshdr.par(i).decade == 0
+%             fcshdr.par(i).log = 0;
+%             fcshdr.par(i).logzero = 0;
+%         else
+%             fcshdr.par(i).log = 1;
+%             if (str2num(par_exponent(3)) == 0)
+%               fcshdr.par(i).logzero = 1;
+%             else
+%               fcshdr.par(i).logzero = str2num(par_exponent(3));
+%             end
+%         end
        
         par_exponent= str2num(par_exponent_str);
         fcshdr.par(i).decade = par_exponent(1);
@@ -203,13 +189,9 @@ elseif  strcmp(fcsheader_type,'FCS2.0') || strcmp(fcsheader_type,'FCS3.0') % FCS
               fcshdr.par(i).logzero = par_exponent(2);
             end
         end
-        gain_str = get_mnemonic_value(['$P',num2str(i),'G'],fcsheader_main, mnemonic_separator);
-        if ~isempty(gain_str)
-            fcshdr.par(i).gain=str2double(gain_str);
-        else
-            fcshdr.par(i).gain=1;
-        end
-       
+
+        
+        
 %============================================================================================
     end
     fcshdr.starttime = get_mnemonic_value('$BTIM',fcsheader_main, mnemonic_separator);
@@ -263,69 +245,40 @@ if strcmp(fcsheader_type,'FCS2.0')
     end
     fclose(fid);
 elseif strcmp(fcsheader_type,'FCS3.0')
-%     if strcmp(mnemonic_separator,'|') % CyAn Summit FCS3.0
-%         fcsdat_ = (fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'uint16','ieee-le')');
-%         fcsdat = zeros(size(fcsdat_));
-%         new_xrange = 1024;
-%         for i=1:fcshdr.NumOfPar
-%             fcsdat(:,i) = fcsdat_(:,i)*new_xrange/fcshdr.par(i).range;
-%             fcshdr.par(i).range = new_xrange;
-%         end
-%     else % ordinary FCS 3.0
+    if strcmp(mnemonic_separator,'|') % CyAn Summit FCS3.0
+        fcsdat_ = (fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'uint16','ieee-le')');
+        fcsdat = zeros(size(fcsdat_));
+        new_xrange = 1024;
+        for i=1:fcshdr.NumOfPar
+            fcsdat(:,i) = fcsdat_(:,i)*new_xrange/fcshdr.par(i).range;
+            fcshdr.par(i).range = new_xrange;
+        end
+    else % ordinary FCS 3.0
         %%%%%edited by RLF 06_30_10
-        if strcmp(fcshdr.datatype,'D')
-            if strcmp(fcshdr.byteorder, '1,2,3,4')
-                fcsdat = fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'double','l')';
-            elseif strcmp(fcshdr.byteorder,'4,3,2,1')
-                fcsdat = fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'double','b')';
-            end
-        elseif strcmp(fcshdr.datatype,'F')
-            if strcmp(fcshdr.byteorder, '1,2,3,4')
-                fcsdat = fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'float32','l')';
-            elseif strcmp(fcshdr.byteorder,'4,3,2,1')
-                fcsdat = fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'float32','b')';
-            end
-        elseif strcmp(fcshdr.datatype,'I')
-            if strcmp(fcshdr.byteorder, '1,2,3,4')
-                fcsdat = fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'uint32','l')';
-            elseif strcmp(fcshdr.byteorder,'4,3,2,1')
-                fcsdat = fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'uint32','b')';
-            end
+        if strcmp(fcshdr.byteorder, '1,2,3,4')
+        fcsdat = fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'float32','l')';
+        elseif strcmp(fcshdr.byteorder,'4,3,2,1')
+        fcsdat = fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'float32','b')';
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%
-%     end
+    end
     fclose(fid);
 end
 %
-%calculate the scaled events (for log scales) %RLF added gain division
-if nargout>2
-    fcsdatscaled = zeros(size(fcsdat));
-    for  i = 1 : fcshdr.NumOfPar
-        Xlogdecade = fcshdr.par(i).decade;
-        XChannelMax = fcshdr.par(i).range;
-        Xlogvalatzero = fcshdr.par(i).logzero;
-        if fcshdr.par(i).gain~=1
-            fcsdatscaled(:,i)  = double(fcsdat(:,i))./fcshdr.par(i).gain;
-            
-        elseif fcshdr.par(i).log
-            fcsdatscaled(:,i) = Xlogvalatzero*10.^(double(fcsdat(:,i))/XChannelMax*Xlogdecade);
-        else fcsdatscaled(:,i)  = fcsdat(:,i);
-        end
+%calculate the scaled events (for log scales)
+%
+fcsdatscaled = zeros(size(fcsdat));
+for  i = 1 : fcshdr.NumOfPar
+    Xlogdecade = fcshdr.par(i).decade;
+    XChannelMax = fcshdr.par(i).range;
+    Xlogvalatzero = fcshdr.par(i).logzero;
+    if ~fcshdr.par(i).log
+       fcsdatscaled(:,i)  = fcsdat(:,i);
+    else
+       fcsdatscaled(:,i) = Xlogvalatzero*10.^(double(fcsdat(:,i))/XChannelMax*Xlogdecade);
     end
-    
 end
 
-if nargout>3 && ~isempty(fcshdr.CompLabels) %RLF. applied to fcsdatscaled rather than fcsdat.
-        
-    compcols=zeros(1,nc);
-    colLabels={fcshdr.par.name};
-    for i=1:nc
-        compcols(i)=find(strcmp(fcshdr.CompLabels{i},colLabels));
-    end
-    fcsdatcomp=fcsdatscaled;
-    fcsdatcomp(:,compcols)=fcsdatcomp(:,compcols)/fcshdr.CompMat;
-else fcsdatcomp=[];
-end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function mneval = get_mnemonic_value(mnemonic_name,fcsheader,mnemonic_separator)
