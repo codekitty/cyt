@@ -33,7 +33,15 @@ edu_text = data(:, ind);
 
 cyclerfeatures = [dapi edu dapi_text1 dapi_text2 edu_text];
 
-%% run emgm on 5 features (normalized?)
+if size(cyclerfeatures, 2) ~= 5
+    % we are missing one of the needed features by name
+	msgID = 'cyclerclassification_v2:ccfeatures';
+    msg = 'deafult 5 cell cycle features were not found by name.';
+    causeException = MException(msgID,msg);   
+    throw(causeException);
+end
+
+%% run emgm on 5 features
 
 % init the emgm clustering
 ninit = mynormalize([dapi edu dapi_text1], 98);

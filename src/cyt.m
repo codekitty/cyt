@@ -1,5 +1,8 @@
 % ------------------------
-% SightOf is tool to analize and visualize cytof and flow data.
+% SightOf is tool to analyze and visualize single cell data. Typically in
+% situations where there are more cells than features (flow (7-10 features,
+% mass-cytometry (30-40 features), microscopy, and more.
+%
 % SightOf Provides functionlity such as gating, clustering, 
 % dimentionality reduction and comparing expression accross samples.
 %
@@ -148,11 +151,10 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
     put('diff', 0);
     
     put('gates_listener',   @refreshGates)
-    
-    
+      
     % if not found in settings - create default
-    regexps = {'Surface', '(?-i)CD\d*';
-               'Signal' '(?-i)[^a-zA-Z0-9]*p';
+    regexps = {'Cycler Features' '^Intensity_ResBlue_Nuclei_1_IntegratedIntensity$|^Intensity_ResFarRed_Nuclei_1_IntegratedIntensity$|^Texture_5_ResFarRed_Nuclei_12_InfoMeas1$|^Texture_5_ResBlue_Nuclei_4_Variance$|^Texture_5_ResBlue_Nuclei_7_SumVariance$';
+               'Phase Indicators' '^G1$|^S$|^G2$';
                'All' '.*'};
     set(handles.lstRegexps, 'String', regexps(:, 1));
 	put('regexps', regexps);
@@ -487,14 +489,25 @@ end
 
 % --------------------------------------------------------------------
 function PrintMenuItem_Callback
-    [filename, pathname, ~] = uiputfile('*.png', 'Save Image');
+    [filename, pathname, ~] = uiputfile({'*.png;*.pdf', 'Image files (.png, .pdf)';...
+                                         '*.png', 'Portable Network Graphics (.png)';...
+                                         '*.pdf', 'Color PDF file format (.pdf)'},...
+                                        'Save Image');
 
     if isequal(filename,0) || isequal(pathname,0)
     return;
     end
-
-    handles = gethand;
-    print(handles.figure1, '-dpng', '-noui', [pathname filename]);
+    
+    ha = gca;
+    f_new = figure;
+    copyobj(ha, f_new);
+    
+    % save new figure
+    if (endswith(filename, '.pdf'))
+        screen2eps(f_new, [pathname filename]);
+    else
+        screen2png(f_new, [pathname filename]);
+    end
 end
 % --------------------------------------------------------------------
 function CloseMenuItem_Callback(~, ~, handles)
@@ -3340,17 +3353,37 @@ function btnSplitCellCycle(~,~,~)
 % 
 %         gate_context = gates{i, 2};
     
+    % evaluate phase using data and specific channels (selected by name)
     data = session_data(gate_context, :);
-    [G1, S, G2, M0, M1] = cyclerclassification_v2(featurenames, data);
+    try 
+        [G1, S, G2, M0, M1] = cyclerclassification_v2(featurenames, data);
+    catch e
+         uiwait(msgbox(sprintf('Automatic classification and cleaning failed: %s', getReport(e,'basic')),...
+        'Error','error'));  
+        disp(getReport(e,'extended'));     
+    end
+ 
+    % add indicator channels
+    delG1 = zeros(size(gate_context)); delG1(G1) = 1;
+    delS  = zeros(size(gate_context)); delS(S)  = 1;
+    delG2 = zeros(size(gate_context)); delG2(G2) = 1;
+    delM0 = zeros(size(gate_context)); delM0(M0) = 1;
+    delM1 = zeros(size(gate_context)); delM1(M1) = 1;
+    addChannels({'G1','S','G2','M0','M1'},...
+                [delG1(:), delS(:), delG2(:), delM0(:), delM1(:)]);
 
 %         ris(end+1) = ri;
-    
+
+    % split cells to gates by phase
     addGate('G1', gate_context(G1));
     addGate('S', gate_context(S));
     addGate('G2', gate_context(G2));
     addGate('M0', gate_context(M0));
-    addGate('M1', gate_context(M1));  
-
+    addGate('M1', gate_context(M1));
+    interphase = union(union(gate_context(G1),gate_context(S)), gate_context(G2));
+    addGate('Interphase', interphase);
+    addGate('Start', randsample(gate_context(G1), 1));
+    
 %     end
 
 %     mean(ris(:))

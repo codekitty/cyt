@@ -116,9 +116,13 @@ if control_density
 end
 
 if (svGolay && ~show_error) % do not smooth when showing variance
-    for col=1:size(Y_vals, 2)
-        Y_vals(:, col) = smooth(X, Y_vals(:, col),sqrt(num_locs*2), 'sgolay');
-    end          
+    try 
+        for col=1:size(Y_vals, 2)
+            Y_vals(:, col) = smooth(X, Y_vals(:, col),sqrt(num_locs*2), 'sgolay');
+        end 
+    catch 
+        disp 'warn: savitzky-golay smoothing is not supported - perhaps you are missing the image smoothing matlab package - no big deal';
+    end
 end
 
 % Y_vals(2:end,:) = diff(Y_vals);
