@@ -418,7 +418,7 @@ for graph_iter = 1:G.Opts.num_graphs
 		% check for convergence
         fpoint_corr = corr( t( realign_iter, : )', t( realign_iter - 1, : )' );
         fprintf( 1, '%2.5f...', fpoint_corr);
-		converged = fpoint_corr > 0.999;
+		converged = fpoint_corr > 0.9999;
         
         if (mod(realign_iter,16)==0)
             % break after too many alignments - something is wrong

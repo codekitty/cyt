@@ -5766,6 +5766,43 @@ function compareMaps
     map_compareGUI('session_data',session_data(gate_context,:),'channelNames',channel_names)
 end
 
+function runDiffusionMaps
+
+    handles = gethand; % GUI handles to retrieve info from gui as below
+
+%     selected_gates    = get(handles.lstGates, 'Value'); % currently selected 
+    selected_channels = get(handles.lstChannels, 'Value'); % ---------------
+
+    session_data  = retr('sessionData'); % all data
+%     gates         = retr('gates'); % all gates (names\indices) in cell array
+    gate_context  = retr('gateContext'); % indices currently selected
+%     channel_names = retr('channelNames');
+
+%% diffusion map
+%     data = mynormalize(session_data(gate_context, selected_channels), 99.5);
+    data = session_data(gate_context, selected_channels);
+    kev = 15;
+    GraphDiffOpts = struct( 'Normalization','smarkov', ...
+                            'Epsilon',1, ...
+                            'kNN', 15, ...
+                            'kEigenVecs', kev, ...
+                            'Symmetrization', 'W+Wt'); ...
+
+    GD = GraphDiffusion(data', 0, GraphDiffOpts);
+    C = mat2cell([1:kev; GD.EigenVals(1:kev)']',ones(kev, 1));
+    [vg, vc] = addChannels( cellfun(@(x)sprintf('E%g (%2.2f)', x), C, 'UniformOutput', false),...
+                 GD.EigenVecs(:, 1:kev));
+             
+    auxInfo.what = 'Diffusion Map';
+    auxInfo.channels = selected_channels;
+    auxInfo.params = GraphDiffOpts;
+    
+    addAuxInfo(vg, vc, auxInfo);
+
+	return;
+
+end
+
 % ------------
 % add your own code here. please refer to examples below.
 % ------------
@@ -5780,6 +5817,11 @@ function openEndedAction
     gates         = retr('gates'); % all gates (names\indices) in cell array
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
+    
+    
+    runDiffusionMaps;
+    return;
+    
     
     wanderlusti = 202;
     f=figure('Position', [100, 100, 1500, 450]);
