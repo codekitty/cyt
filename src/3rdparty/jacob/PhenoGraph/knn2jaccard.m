@@ -19,7 +19,7 @@ for ii = 1:n
     n_of_n = IDX(pt_neighbs,:);
     shared_neighbors = sum(ismember(n_of_n, pt_neighbs),2);
     % intersection and union sum to k
-    weights = shared_neighbors ./ (k-shared_neighbors); % Jaccard coefficient
+    weights = shared_neighbors ./ (2*k-shared_neighbors); % Jaccard coefficient
     idx = row:row+k-1;
     I(idx) = repmat(ii,1,k);
     J(idx) = pt_neighbs;
