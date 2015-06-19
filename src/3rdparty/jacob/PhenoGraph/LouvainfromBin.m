@@ -18,9 +18,14 @@ for iter = 1:numiters
     fprintf( 1, '%s\n', command );
     [s,r] = system( command );
     fprintf(1, '\n');
-    % find each iteration's modularity
-    fprintf( 1, 'MATLAB: modularity scores:\n' );
-    q = find_modularity( r )
+    try
+        % find each iteration's modularity
+        q = find_modularity( r )
+        fprintf( 1, 'MATLAB: modularity scores:\n' );
+    catch
+        warning(sprintf('Unable to find modularity score in the stderr: %s.\nCheck that the correct path to the Louvain code is specified.', r));
+    end
+
     
     % find number of lvevls
     command = [ps '/hierarchy ' filename '.tree' ];
