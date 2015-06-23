@@ -47,25 +47,15 @@ setappdata(0,'hwand',gcf);
 
 hgui=getappdata(0,'hwand');
 
-% Finding function inputs
-for i=1:length(varargin)-1        
-    
-    if(strcmp(varargin{i}, 'title'))
-        set(hObject, 'Name', varargin{i+1});
-    elseif(strcmp(varargin{i}, 'params'))
-        params = varargin{i+1};
-        set(handles.txtNeighbors, 'String', num2str(params.neighbors));
-        metrics = get(handles.pupMetric, 'String');
-        metric = find(strcmpi(metrics, params.metric));
-        set(handles.pupMetric, 'Value', metric);
-        set(handles.lstGates, 'String', params.selected_gates);
-        %set(handles.lstClusterChannel, 'Value', params.all_channels);
-        set(handles.lstClusterChannel, 'String', params.all_channels);
-
-%     elseif(strcmp(varargin{i}, 'gates'))
-%         set(handles.lstGates, 'String', varargin{i+1});
-    end
-end
+% % Finding function inputs
+% for i=1:length(varargin)-1        
+%     
+%     if(strcmp(varargin{i}, 'title'))
+%         setappdata(0,'data', varargin{i+1});
+%     elseif(strcmp(varargin{i}, 'params'))
+% 
+%     end
+% end
 
 % Determine the position of the dialog - centered on the callback figure
 % if available, else, centered on the screen
@@ -159,11 +149,10 @@ end
 
 % --- Executes on button press in btnRun.
 function btnRun_Callback(hObject, eventdata, handles)
-
-    W = findMetaClusters;
-        
-    handles.output = W;
-
+    
+    W=findMetaClusters;
+    handles.output =W;
+    
     % Update handles structure
     guidata(hObject, handles);
 
@@ -175,17 +164,10 @@ end
 function W=findMetaClusters
     hgui=getappdata(0,'hwand');
     handles=guihandles(hgui);
-
-    W.selected_gates = get(handles.lstGates, 'Value');
-    W.cluster_channel = get(handles.lstClusterChannel, 'Value');
-    W.neighbors = str2num(get(handles.txtNeighbors, 'String'));
-
-    nMetric = get(handles.pupMetric, 'Value');
-    strMetrics = get(handles.pupMetric, 'String');
-    W.metric = strMetrics{nMetric};
-    W.all_channels = get(handles.lstClusterChannel, 'String');
-            
     
+    W.method = get(handles.popCluserMethod, 'Value');    
+    W.neigh = get(handles.txtNeighbors, 'String');
+    W.nMetric = get(handles.pupMetric, 'Value');
 end
 
 % --- Executes on button press in btnCancel.
@@ -227,7 +209,7 @@ end
 end
 
 
-function txtKNeighbors_Callback(hObject, eventdata, handles)
+function txtNeighbors_Callback(hObject, eventdata, handles)
 % hObject    handle to txtKNeighbors (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
@@ -237,7 +219,7 @@ function txtKNeighbors_Callback(hObject, eventdata, handles)
 end
 
 % --- Executes during object creation, after setting all properties.
-function txtKNeighbors_CreateFcn(hObject, eventdata, handles)
+function txtNeighbors_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to txtKNeighbors (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
@@ -249,19 +231,19 @@ if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgr
 end
 end
 
-% --- Executes on selection change in lstChannels.
-function lstChannels_Callback(hObject, eventdata, handles)
-% hObject    handle to lstChannels (see GCBO)
+% --- Executes on selection change in lstCluChannels.
+function popCluserMethod_Callback(hObject, eventdata, handles)
+% hObject    handle to lstCluChannels (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 
-% Hints: contents = cellstr(get(hObject,'String')) returns lstChannels contents as cell array
-%        contents{get(hObject,'Value')} returns selected item from lstChannels
+% Hints: contents = cellstr(get(hObject,'String')) returns lstCluChannels contents as cell array
+%        contents{get(hObject,'Value')} returns selected item from lstCluChannels
 end
 
 % --- Executes during object creation, after setting all properties.
-function lstChannels_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to lstChannels (see GCBO)
+function popCluserMethod_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to lstCluChannels (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 

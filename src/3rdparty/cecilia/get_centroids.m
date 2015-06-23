@@ -11,7 +11,7 @@ function [centroids, cluster_mapping] = get_centroids(data, inds, cluster_channe
         unique_clusters = unique(cluster_channel(inds{i}));
         
         for j=1:length(unique_clusters), %looping through clusters in gate/sample
-            sub_data = data(inds{i},:);
+            sub_data = data(inds{i},:); %getting the cells of the choosen gates
             centroids(end+1,:) = mean(sub_data(cluster_channel(inds{i}) == unique_clusters(j),:));
             cluster_sizes(k) = size(data(cluster_channel(inds{i}) == unique_clusters(j),:),1) / size(cluster_channel(inds{i}),1);
             k=k+1;
@@ -37,15 +37,3 @@ function [centroids, cluster_mapping] = get_centroids(data, inds, cluster_channe
 
     
 end
-    
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    

@@ -110,6 +110,8 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
           'Plot along time',        @plot_along_time};
+%           'Plot heat map',          @plot_cluster_heat_map;
+%           'Plot cluster tsne',      @plot_cluster_tsne;
 %           'Plot sample clusters',   @plot_sample_clusters;
 %           'Plot meta clusters',     @plot_meta_clusters};
 
@@ -120,6 +122,8 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
           'Plot along time',        @plot_along_time};
+%           'Plot heat map',          @plot_cluster_heat_map;
+%           'Plot cluster tsne',      @plot_cluster_tsne;
 %           'Plot sample clusters',   @plot_sample_clusters;
 %           'Plot meta clusters',     @plot_meta_clusters};
           
@@ -128,6 +132,8 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
           'Plot along time',        @plot_along_time};
+%           'Plot heat map',          @plot_cluster_heat_map;
+%           'Plot cluster tsne',      @plot_cluster_tsne;
 %           'Plot sample clusters',   @plot_sample_clusters;
 %           'Plot meta clusters',     @plot_meta_clusters};
       
@@ -135,11 +141,19 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
           'Histograms by Gates',	@(by_gate)plot_histograms(1);
           'Histograms',             @(by_gate)plot_histograms(0);
           'Plot along time',        @plot_along_time};
+%           'Plot heat map',          @plot_cluster_heat_map;
+%           'Plot cluster tsne',      @plot_cluster_tsne;
 %           'Plot sample clusters',   @plot_sample_clusters;
 %           'Plot meta clusters',     @plot_meta_clusters};
 
-    plotTypes = {case0PlotTypes, case1PlotTypes,...
-        case2PlotTypes, case3PlotTypes, case4PlusPlotTypes};
+    case5PlotTypes = {...	% plot options for cluster
+          'Plot Heat Map',           @plot_cluster_heat_map;
+          'Plot Cluster bh-SNE',     @plot_cluster_tsne};
+%          'Plot sample clusters',   @plot_sample_clusters;
+%          'Plot meta clusters',     @plot_meta_clusters};
+
+    plotTypes = {case0PlotTypes, case1PlotTypes,case2PlotTypes,...
+                 case3PlotTypes, case4PlusPlotTypes,case5PlotTypes};
     put('plotTypes', plotTypes);
     put('lastPlotTypeTable', ones(1, numel(plotTypes)));
 
@@ -355,7 +369,7 @@ function OpenMenuItem_Callback(~, ~, ~)
         
 
         %Read in data    
-        csvdats = cellfun(@(fname) csvread(fname, 1,0), files, 'UniformOutput', false);
+        csvdats = cellfun(@(fname) csvread(fname, 1,1), files, 'UniformOutput', false);
         
         %Add data to session
         disp(sprintf('Files loaded: %gs',toc));
@@ -427,8 +441,8 @@ function OpenMenuItem_Callback(~, ~, ~)
             [~, fcsname, ~] = fileparts(files{i}); 
             gates{last_gate_ind+i, 1} = char(fcsname);
             gates{last_gate_ind+i, 2} = currInd+1:currInd+size(fcsdats{i},1);
-%            gates{last_gate_ind+i, 3} = cdatas{i}.channel_name_map;        
-             gates{last_gate_ind+i, 3} = get_channelnames_from_header(fcshdrs{i});        
+%           gates{last_gate_ind+i, 3} = cdatas{i}.channel_name_map;        
+            gates{last_gate_ind+i, 3} = get_channelnames_from_header(fcshdrs{i});        
             gates{last_gate_ind+i, 4} = files{i}; % opt cell column to hold filename
 
             waitbar(i-1/nfcs, hWaitbar, sprintf('Adding %s data to session  ...', gates{last_gate_ind+i, 1}));
@@ -448,6 +462,11 @@ function OpenMenuItem_Callback(~, ~, ~)
     set(handles.lstIntGates,'String',gates(:, 1));
     
     set(handles.lstChannels,'Value',[]); % Add this line so that the list can be changed
+
+    set(handles.lstCluChannels,'Value',1);
+    set(handles.lstCluChannels,'String',[]); % Add this line so that the list can be changed
+    set(handles.lstClusterNum, 'Value',1);
+    set(handles.lstClusterNum,'String',[]); % Add this line so that the list can be changed
     
     % make sure axis popups are visible and filled out
     set(handles.plotChannels, 'Visible','on','Enable','on');
@@ -541,8 +560,13 @@ function lstChannels_Callback(~, ~, ~)
     % -- update plot options according the # of selected channels.
     plotTypes         = retr('plotTypes');
     lastPlotTypeTable = retr('lastPlotTypeTable');
-    nSelectedType     = min(nSelectedChannels+1, numel(plotTypes));
-    plotBynSelected   = plotTypes{nSelectedType};
+    nSelectedType     = min(nSelectedChannels+1, numel(plotTypes)-1);
+    
+    if ~get(handles.btnCluster,'Value');
+        plotBynSelected   = plotTypes{nSelectedType};
+    else
+        plotBynSelected = plotTypes{6}; %cluster type
+    end
     set(handles.pupPlotType, 'String', plotBynSelected(:,1), 'Value', lastPlotTypeTable(nSelectedType));
 
     % -- clear regexps textfield
@@ -598,7 +622,7 @@ function lstGates_Callback(~, ~, ~)
     setChannelNamesToAxis(handles.lstClusterChannels, channel_names);
     setChannelNamesToAxis(handles.lstMetaClusterChannels, channel_names);
     setChannelNamesToAxis(handles.lstBasisOfMetaChannel, channel_names);
-    setChannelNamesToAxis(handles.lstTsneColorBy, channel_names);
+    setChannelNamesToAxis(handles.lstTsneColorBy, ['Gates' channel_names(:)']);
     setChannelNamesToAxis(handles.lstFunctionalXAxis, channel_names);
     setChannelNamesToAxis(handles.pupXAxis, channel_names);
     setChannelNamesToAxis(handles.pupYAxis, channel_names);
@@ -606,7 +630,7 @@ function lstGates_Callback(~, ~, ~)
     setChannelNamesToAxis(handles.pupDensYAxis, channel_names);
     setChannelNamesToAxis(handles.pupZAxis, [' ' channel_names(:)']);
     setChannelNamesToAxis(handles.pupColorBy,['Gates' channel_names(:)']);
-
+    
     
     % show\hide option to plot difference of channels (TODO move this somewhere
     % else!!)
@@ -624,6 +648,7 @@ function lstGates_Callback(~, ~, ~)
     put('gateContext', gate_indices);
     
     setStatus(sprintf('%g data points in the gates selected', numel(gate_indices)));
+    filterDiscreteChannels(channel_names);
 end
 
 function setChannelNamesToAxis(pupObject, channel_names)
@@ -682,12 +707,27 @@ function btnAddFCS_Callback(~, ~, ~)
 % handles    structure with handles and user data (see GUIDATA)
 end
 
+% --- Executes on button press in btnEditClusters.
+function btnEditClusters_Callback(~, ~, ~)
+% hObject    handle to btnAddFCS (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+    handles = gethand;
+    set(handles.btnDelCluster, 'Visible', 'on');
+    set(handles.btnMergeCluster, 'Visible', 'on');
+    set(handles.txtClusterNum, 'Visible', 'on');
+    set(handles.lstClusterNum,'Value',1);
+    set(handles.lstClusterNum, 'Visible', 'on');
+end
+
 % --- Executes on button press in plotChannels.
 function plotChannels_Callback(~, ~, handles)
     
     % disable gating functionality
-    set(handles.btnGatePoly, 'Enable', 'off');
-    set(handles.btnGateRect, 'Enable', 'off');
+    enableGating(handles, 'off');
+    set(handles.btnPickCluster, 'Enable', 'off');
+    
+    clusterFlag=get(handles.btnCluster,'Value');
     
     % find selected plot type request
     selectedGates = get(handles.lstGates,'Value');
@@ -697,8 +737,16 @@ function plotChannels_Callback(~, ~, handles)
     plotTypes        = retr('plotTypes');
     selectedPlotType = retr('lastPlotTypeTable');
     
-    nSelectedChannelsType = min(nSelectedChannels+1, numel(plotTypes));
-    plotBynSelected  = plotTypes{nSelectedChannelsType};
+    nSelectedChannelsType = min(nSelectedChannels+1, numel(plotTypes)-1);
+    %plotBynSelected  = plotTypes{nSelectedChannelsType};
+    
+    if ~clusterFlag
+        plotBynSelected   = plotTypes{nSelectedChannelsType};
+    else
+        plotBynSelected = plotTypes{6}; %cluster type
+    end
+    
+    
     
     % Open in a New Window if Command/ctrl is pressed
 	current_figure = gcf;
@@ -722,7 +770,7 @@ function plotChannels_Callback(~, ~, handles)
 
     
     % Invoke the selected plot function
-    plotBynSelected{idxSelectedPlotType, 2}();
+    plotBynSelected{idxSelectedPlotType, 2}(); 
 
     % Save selected gates, channels, and plot type
     put('inMainPlot', false);
@@ -738,7 +786,6 @@ end
 
 function hidePlotControls
     handles = gethand;
-
 
     set(handles.pnlScatterControls, 'Visible', 'off');
     set(handles.pnlDensityControls, 'Visible', 'off');
@@ -1038,6 +1085,601 @@ function plot_along_time(time_channel)
     end
 end
 
+function plot_cluster_heat_map
+    handles = gethand; 
+        
+    % show controls
+    if ~isCtrlPressed
+        set(handles.pnlClusterControls, 'Visible', 'on');
+        
+        %hide cicilia's panels
+        set(handles.lstClusterChannels, 'Visible', 'off');
+        set(handles.popSamplePlotOptions, 'Visible', 'off');
+        set(handles.txtClusterChannelHM, 'Visible', 'off');
+        set(handles.txtPlotTypeHM, 'Visible', 'off');
+        set(handles.lstSingleCluster, 'Visible', 'off');
+        set(handles.txtChooseClusterHM, 'Visible', 'off');
+        set(handles.popSingleClusterPlotType, 'Visible', 'off');
+        set(handles.txtSingleClusterPlotTypeHM, 'Visible', 'off');
+    end
+
+	hPlot = subplot(1,1,1,'Parent',handles.pnlPlotFigure);
+    % clear the figure panel
+    cla;
+    colormap jet;
+    legend('off');
+    colorbar('delete');
+    axis auto;
+    hold off;
+    box on;
+
+    session_data = retr('sessionData'); % all data
+    gates        = retr('gates');
+    gate_context = retr('gateContext'); % indices currently selected
+    if isempty(gate_context)
+        return;
+    end
+    
+    selected_channels = get(handles.lstChannels, 'Value');
+    channel_names     = retr('channelNames');
+    selected_gates    = get(handles.lstGates, 'Value');
+    gate_names        = gates(selected_gates, 1);
+        
+    
+    %find cluster channel
+    cluster_channel = get(handles.lstCluChannels, 'Value');
+    channel_index = retr('current_cluster_channels');
+    cluster_channel = channel_index(cluster_channel);
+       
+    %User choise for degree of var in the gui
+    DegVarFlag = get(handles.chkDegVar, 'Value');
+    rescale= get(handles.chkScale, 'Value');
+    
+    %find color scheme
+    color = get(handles.popSampleHeatColor, 'Value');
+    
+    if color == 1,
+        color_map = interpolate_colormap(othercolor('YlOrBr9'), 64);
+    elseif color == 2,
+         color_map = interpolate_colormap(othercolor('Blues5'), 64);
+        %color_map = colormap(bone(64));
+    elseif color == 3,
+        color_map = interpolate_colormap(othercolor('Greens9'), 64);
+        %color_map = colormap(pink(64));
+    elseif color == 4,
+        color_map = colormap(gray(64));
+    elseif color == 5,
+        color_map = interpolate_colormap(othercolor('BuPu7'), 64);
+%     elseif color == 6,
+%         color_map = interpolate_colormap(redbluecmap, 64);
+%        %finding basis for min and max for color scaling
+%         heat_min = min(min(marker_means));
+%         heat_max = max(max(marker_means));
+%         %adjusting heatmap color scaling
+%         if abs(heat_min) > heat_max,
+%             heat_max = abs(heat_min);
+%         elseif heat_min < 0,
+%             heat_min = -heat_max;
+%         end
+    end
+            
+    % set color map
+    colormap(color_map);
+    
+    % show the heat map with clusters
+    show_by_cluster_channel = true;
+    
+    % show the heat map gates
+    %show_by_cluster_channel = false;
+
+    if (show_by_cluster_channel && ~DegVarFlag)
+        
+        clusters_in_sample = unique(session_data(gate_context, cluster_channel));
+
+        %Ignoring cluster No. 0 
+        clusters_in_sample = clusters_in_sample(clusters_in_sample~=0);
+        
+        num_clusters = length(clusters_in_sample);
+
+        %finding mean values of marker levels for each cluster
+        marker_means = zeros(num_clusters, length(selected_channels));
+        data = session_data(gate_context, selected_channels);
+
+        %looping through clusters
+        for i=1:length(clusters_in_sample)
+            marker_means(i,:) = mean(data(session_data(gate_context, cluster_channel)==clusters_in_sample(i),:),1);
+        end
+        
+        if rescale
+            marker_means = mynormalize(marker_means, 100);
+        end
+
+        %find percentage of cells belonging to each cluster
+        cells_pr_cluster = countmember(clusters_in_sample,session_data(gate_context,cluster_channel))/length(gate_context);
+    
+    %Using sorted heat map with degree of var
+    elseif (show_by_cluster_channel && DegVarFlag)
+        sortedclusterheatmap(session_data(gate_context,selected_channels ),...
+                             session_data(gate_context, cluster_channel),...
+                             channel_names(selected_channels),rescale);
+        return;
+    %Using heat map for gates
+    else
+        num_clusters = length(selected_gates);
+
+        %finding mean values of marker levels for each cluster
+        marker_means = zeros(num_clusters, length(selected_channels));
+        data = session_data(gate_context, selected_channels);
+
+        %looping through gates
+        for i=1:numel(selected_gates)
+            marker_means(i,:) = mean(session_data(gates{selected_gates(i),2},selected_channels),1);
+        end
+        
+        if rescale
+            marker_means = mynormalize(marker_means, 100);
+        end
+        
+        %find percentage of cells belonging to each cluster
+        cells_pr_cluster = cellfun(@(v)length(v), gates(selected_gates, 2))/length(gate_context);
+    end
+    
+    
+    % === plot heat map ===
+    imagesc(marker_means);
+
+    % show cluster information
+    set(gca, 'ytick', 1:num_clusters);
+    if (show_by_cluster_channel)
+        y_labs = strcat(...
+            strread(num2str(clusters_in_sample'), '%s'),...
+            ' (',...
+            num2str(cells_pr_cluster*100,'%2.2f'),...
+            '%)');
+    else
+        y_labs = strcat(...
+            gates(selected_gates, 1),...
+            ' (',...
+            num2str(cells_pr_cluster*100,'%2.2f'),...
+            ')');            
+    end
+    set(gca, 'Yticklabel', y_labs);
+    colorbar;
+    
+    % show channel information 
+    set(gca, 'xtick', []);
+    xticklabel_rotate(1:length(selected_channels),75,strcat(channel_names(selected_channels), {' '}));
+    
+    xlabel('Channels');
+    ylabel('Clusters');
+end
+
+function plot_cluster_tsne
+    handles = gethand; 
+    
+    %enable the gating btns in the main tool bar
+    enableGating(handles, 'on');
+    set(handles.btnPickCluster, 'Enable', 'on');
+    
+    %reset choise of the selecting clusters btn
+    set(handles.btnPickCluster, 'State', 'off');
+    
+    % show controls
+    if ~isCtrlPressed
+        set(handles.pnlMetaClusterControls, 'Visible', 'on');
+       
+        %hide cicilia's panels
+        set(handles.popMetaPlotOptions, 'Visible', 'off');
+        set(handles.pnlSingleMetaControls, 'Visible', 'off');
+        set(handles.txtPlotType, 'Visible', 'off');
+        set(handles.txtClusterChannel, 'Visible', 'off');
+        set(handles.txtMetaClusterChannel, 'Visible', 'off');
+        set(handles.lstMetaClusterChannels, 'Visible', 'off');
+        set(handles.lstSingleMetaCluster, 'Visible', 'off');
+        set(handles.lstBasisOfMetaChannel, 'Visible', 'off');
+
+        %Cluster's editing panel will be visible after clicking on the
+        %"edit" btn 
+        set(handles.btnDelCluster, 'Visible', 'off');
+        set(handles.btnMergeCluster, 'Visible', 'off');
+        set(handles.txtClusterNum, 'Visible', 'off');
+        set(handles.lstClusterNum, 'Visible', 'off');
+
+    end
+   
+    %chossing plot place in figure
+ 	hPlot = subplot(1,1,1,'Parent',handles.pnlPlotFigure);
+    
+    % clear the figure panel
+    cla;
+    colormap jet;
+    legend('off');
+    colorbar('delete');
+    axis auto;
+    box on;
+
+    %getting all parameters
+    session_data = retr('sessionData'); % all data
+    gates        = retr('gates');
+    gate_context = retr('gateContext'); % indices currently selected
+    if isempty(gate_context)
+        return;
+    end
+    
+    selected_channels = get(handles.lstChannels, 'Value');
+    channel_names     = retr('channelNames');
+    selected_gates    = get(handles.lstGates, 'Value');
+    gate_names        = gates(selected_gates, 1);
+        
+    %find cluster channel
+    selected_list_cluster      = get(handles.lstCluChannels, 'value');
+    cluster_channels      = retr('current_cluster_channels');
+    cluster_channel = cluster_channels(selected_list_cluster);
+        
+    if isempty(selected_list_cluster)
+        uiwait(msgbox('No cluster channel was chosen!','Error','error'));  
+        return; 
+    end
+    
+    
+    %finding indeces of selected samples (currently assuming that no overlap occures between indeces)
+    inds = {};
+    for i=1:length(selected_gates),
+        inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
+    end
+    
+    %finding cluster centroids and mapping between clusters
+    [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = compute_cluster_centroids(...
+                                    session_data(gate_context, selected_channels), inds, ...
+                                    session_data(gate_context, cluster_channel)); 
+    
+    %create list of cluster numbers in each selected gate in the panel
+    gateCluStr=[];
+    for i=1:length(cluster_mapping(:,3))
+        gateCluStr{end+1}=sprintf('%s: %g',gate_names{cluster_mapping(i,3)}, cluster_mapping(i,1));
+    end
+    
+    %updating the list with the clustes number in the gui
+    set(handles.lstClusterNum, 'String', gateCluStr);
+                                
+    %parameter in case there are meta clusters                            
+    metaClusters=[];
+    
+    if ~isCtrlPressed
+        set(handles.pnlMetaTsneColor, 'Visible', 'on');
+    end
+    
+    %computing the dot size in the plot by the size of the clusters
+    dot_size = 450/max(cluster_mapping(:,5)) * cluster_mapping(:,5)+5;
+
+    try
+        % Compute tSNE map over centroids
+        if (size(centroids, 1) > 10)
+            tSNE_out = fast_tsne(centroids, [], 5);    %running tSNE on centroids
+        else
+            tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
+        end
+    catch e
+        msgbox(sprintf(...
+                ['tSNE Failed: There was a problem with generating tSNE'  ...
+                ' from these %g cluster centroids.\n Possible causes are' ...
+                ' inssuficient number of centroids or illegal cyt installation path.'],...
+                size(centroids,1)),...
+               'Error','error');
+        disp(getReport(e,'extended'));
+        return;
+    end
+    %finding color channel
+    color_chan = get(handles.lstTsneColorBy,'Value');        
+    color_chan = color_chan-1;
+    
+    %testing if color_chan is discrete (= maybe cluster channel) or continous (maybe marker channel)
+    %if isDiscrete(color_chan) && length(unique(session_data(gate_context, color_chan))) < 500,
+    if (color_chan<0)
+        return;
+    elseif color_chan ==0 % color by gate         
+        tsne_col = cluster_mapping(:,3);
+        scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, (dot_size+31)); %plotting
+        legend(gate_names, 'Interpreter', 'none');
+    else
+        if isDiscrete(color_chan) %color by cluster (or meta)
+            data_col=session_data(gate_context, color_chan);
+            tsne_col=zeros(length(centroids),1);
+            
+            %choosing colors by clusters
+            for i=1:length(centroids)
+                cluster=cluster_mapping(i,1); % the original cluster of index i in the centroids
+                sel_gates=cluster_mapping(i,3); %the gate in index i in the centroids
+                indicesOfGateI=gates{selected_gates(sel_gates),2}; % indices of gate i in the data
+                cellsOfGateIandCluster=[session_data(indicesOfGateI,cluster_channel)==cluster]; %the cells with the wanted gate and cluster
+                IndCellsOfGateIandCluster= indicesOfGateI(cellsOfGateIandCluster); %their indices
+                
+                % ideally these should be equal on each cluster but we
+                % still take the mean
+                tsne_col(i)=mean(session_data(IndCellsOfGateIandCluster,color_chan));
+            end
+            
+            %Ignoring cluster 0 after computing the the Meta clusters
+            tSNE_out=tSNE_out(find(tsne_col),:);
+            dot_size=dot_size(find(tsne_col),:);
+            tsne_col=tsne_col(find(tsne_col));
+
+            metaClusters=tsne_col;
+            
+            %Plotting
+            scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size+31); %plotting
+            
+            check=strfind(channel_names(color_chan),'meta');
+            if ~isempty(check{1,1})
+                groups = [repmat('MC ', length(unique(tsne_col)), 1), num2str(unique(tsne_col))];
+            else
+                groups = [repmat('Cluster ', length(unique(tsne_col)), 1), num2str(unique(tsne_col))];
+            end
+            legend({groups},'Interpreter', 'none');%display legend 1
+
+        else
+        
+            tsne_col = zeros(size(centroids,1),1);
+            for i=1:size(centroids,1),
+                sub_data = session_data(gate_context(inds{cluster_mapping(i,3)}),:);
+                tsne_col(i) = mean(sub_data(sub_data(:,cluster_channel) == cluster_mapping(i,4), color_chan));
+                %tsne_col(cluster_mapping(:,1) == i) = median(session_data(session_data(gate_context,cluster_channel) == i,color_chan));
+            end
+
+            %making 0.95 quantile most red color and 0.05 quantile most blue color to compensate for outliers
+            tsne_col(tsne_col < quantile(tsne_col, 0.05)) = quantile(tsne_col,0.05);
+            tsne_col(tsne_col > quantile(tsne_col, 0.95)) = quantile(tsne_col, 0.95);
+            colormap(jet(40));
+            scatter(tSNE_out(:,1),tSNE_out(:,2), (dot_size+31), tsne_col, 'fill');
+            colorbar;
+            color_chan_names = get(handles.lstTsneColorBy,'String'); 
+            title(color_chan_names(color_chan+1));
+        end
+    end
+    
+    put('recenttsne', tSNE_out);
+    xlabel('tSNE1');
+    ylabel('tSNE2');
+    
+    
+    delete(subplot(1,1,1,'Parent',handles.hmPlotFigure));
+    
+    dcm_obj = datacursormode(gcf);
+    set(dcm_obj,'UpdateFcn',{@myupdatefcn,centroids,tSNE_out,cluster_sizes,cellsInCluster,cluster_mapping(:,3),cluster_mapping(:,1),metaClusters});   
+end
+
+%Changing the original msg of the btnPickCluster when choosing a cluster
+function output_txt = myupdatefcn(obj,event_obj,centroids,tSNEmap,percent,cellsInCluster,cluster2gate,clusters,metaClusters)
+    % Display information about the choosen cluster
+    % obj          Currently not used (empty)
+    % event_obj    Handle to event object
+    handles = gethand; 
+    selected_gates    = get(handles.lstGates, 'Value');
+    gate_names        = get(handles.lstGates, 'String');
+    
+    %finding the chosen cluster
+    pos = get(event_obj,'Position');
+    index = find(ismember(tSNEmap,pos,'rows'));
+    
+    %Pringing the cluster information of a chosen cluster into the gui
+    if isempty(metaClusters)
+        output_txt = {sprintf('Gate: %s', gate_names{selected_gates(cluster2gate(index))}),...
+                      sprintf('Cluster Number: %g', clusters(index)),...
+                     [sprintf('Cluster Size: %g cells (%2.2f', cellsInCluster(index), percent(index)*100) '%)']};
+    else
+        output_txt = {sprintf('Gate: %s', gate_names{selected_gates(cluster2gate(index))}),...
+                      sprintf('Cluster Number: %g', clusters(index)),...
+                      sprintf('Meta Cluster Number: %g', metaClusters(index)),...
+                     [sprintf('Cluster Size: %g cells (%2.2f', cellsInCluster(index), percent(index)*100) '%)']};
+    end
+    
+    %creating a spesific heat map for the chosen cluster
+    output=sprintf('Gate: %s, Cluster Number: %g', gate_names{selected_gates(cluster2gate(index))},clusters(index));
+    cluster_heat_map(clusters(index),cluster2gate(index),output);
+
+    %drawing circle around the obj
+    %hold on;
+    %scatter(pos(:,1), pos(:,2), (dot_size(index)+5)*1, 'MarkerEdgeColor',[0 0 0],'LineWidth',3); %plotting
+end
+
+function cluster_heat_map(cluster,gate,output_txt)
+    handles = gethand; 
+    set(handles.hmPlotFigure,'Visible','on');
+
+    hPlot = subplot(1,1,1,'Parent',handles.hmPlotFigure);
+    
+    session_data = retr('sessionData'); % all data
+    gates        = retr('gates');
+    gate_context = retr('gateContext'); % indices currently selected
+    if isempty(gate_context)
+        return;
+    end
+    
+    selected_channels = get(handles.lstChannels, 'Value');
+    channel_names     = retr('channelNames');
+    selected_gates    = get(handles.lstGates, 'Value');
+    gate_names        = gates(selected_gates, 1);
+    
+    %find cluster channel
+    selected_list_cluster = get(handles.lstCluChannels, 'value');
+    cluster_channels      = retr('current_cluster_channels');
+    cluster_channel       = cluster_channels(selected_list_cluster);
+    
+    if isempty(cluster_channel) || ~isDiscrete(cluster_channel) || length(unique(session_data(gate_context, cluster_channel))) > 500, %if channels is empty or channel is not discrete or the number of clusters is too large
+                uiwait(msgbox('No cluster channel was chosen!','Error','error'));  
+        return; 
+    end
+    
+    %finding mean values of marker levels for each cluster
+    marker_means = zeros(1, length(selected_channels));
+    data = session_data(gates{gate,2}, selected_channels);
+    marker_means(1,:) = mean(data(session_data(gates{gate,2}, cluster_channel)==cluster,:),1);
+    
+    %Plotting
+    imagesc(marker_means,'Parent', hPlot);
+    color_map = interpolate_colormap(othercolor('Blues5',64), 64);
+    colormap(hPlot, color_map);
+    colorbar(hPlot);
+    ax=hPlot;
+    ax.YTick = 0;
+    ax.XTick = 0;
+    
+    title('Parent', hPlot,output_txt);
+
+    hold(hPlot,'on');
+    
+    names=channel_names(selected_channels);
+    for i=1:numel(names)
+       name=names{i};
+       if numel(name)>8
+        name=name(1:8);
+        name = strcat(name,'...')
+       end
+       names{i}=name;
+    end
+    h = text(1:length(selected_channels),1.5*ones(1,length(selected_channels)),names,'Parent', hPlot);
+    set(h, 'rotation', 90);
+
+end
+
+% --- Executes on selection change in btnDelCluster for cluster deletion in plot_cluster_tsne.
+function btnDelCluster_Callback(~, ~, ~)
+    handles = gethand; 
+    
+    %get all parameters
+    session_data = retr('sessionData'); % all data
+    gates        = retr('gates');
+    gate_context = retr('gateContext'); % indices currently selected
+    if isempty(gate_context)
+        return;
+    end
+    
+    selected_channels = get(handles.lstChannels, 'Value');
+    channel_names     = retr('channelNames');
+    selected_gates    = get(handles.lstGates, 'Value');
+    gate_names        = gates(selected_gates, 1);
+        
+    %find cluster channel
+    selected_list_cluster      = get(handles.lstCluChannels, 'value');
+    cluster_channels      = retr('current_cluster_channels');
+    cluster_channel = cluster_channels(selected_list_cluster);
+     
+    %get the user choise for which cluster/s to delete 
+    userChoise = get(handles.lstClusterNum, 'Value');
+    
+    %finding indeces of selected samples (currently assuming that no overlap occures between indeces)
+    inds = {};
+    for i=1:length(selected_gates),
+        inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
+    end
+    
+    %finding cluster centroids and mapping between clusters
+    [~, cluster_mapping,~,~] = compute_cluster_centroids(...
+                               session_data(gate_context, selected_channels), inds, ...
+                               session_data(gate_context, cluster_channel)); 
+    
+    %get the list of cluster numbers in the panel
+    edited=session_data(:,cluster_channel);
+    
+    if isempty(userChoise)
+        return;
+    end
+        
+    %changing chosen cluster into cluster "0"
+    for i=1: numel(userChoise) %in case for multiple choise (more then 1 cluster to delete)    
+        choise=(userChoise(i));
+        gatesIdx=gates{selected_gates(cluster_mapping(choise,3)),2};
+        for j=1:numel(gatesIdx) %for every old cluster ID
+            idx=gatesIdx(j);
+            if session_data(idx,cluster_channel)==cluster_mapping(choise,1)
+                edited(idx,1)=0;
+            end
+        end
+    end
+    
+    addChannels({sprintf('edited_%s',channel_names{cluster_channel})},edited,1:length(session_data),1:size(gates,1));
+end
+
+
+% --- Executes on selection change in btnDelCluster for merging clusters in plot_cluster_tsne.
+function btnMergeCluster_Callback(~, ~, ~)
+    handles = gethand; 
+    
+    session_data = retr('sessionData'); % all data
+    gates        = retr('gates');
+    gate_context = retr('gateContext'); % indices currently selected
+    if isempty(gate_context)
+        return;
+    end
+    
+    selected_channels = get(handles.lstChannels, 'Value');
+    channel_names     = retr('channelNames');
+    selected_gates    = get(handles.lstGates, 'Value');
+    gate_names        = gates(selected_gates, 1);
+        
+    %find cluster channel
+    selected_list_cluster      = get(handles.lstCluChannels, 'value');
+    cluster_channels      = retr('current_cluster_channels');
+    cluster_channel = cluster_channels(selected_list_cluster);
+     
+    userChoise = get(handles.lstClusterNum, 'Value');
+
+    
+    %finding indeces of selected samples (currently assuming that no overlap occures between indeces)
+    inds = {};
+    for i=1:length(selected_gates),
+        inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
+    end
+    
+    
+    %finding cluster centroids and mapping between clusters
+    [~, cluster_mapping,~,~] = compute_cluster_centroids(...
+                               session_data(gate_context, selected_channels), inds, ...
+                               session_data(gate_context, cluster_channel)); 
+    
+    if length(userChoise)>1
+        len=length(unique(cluster_mapping(userChoise,3)));
+        if len>1
+            clu_channel={};
+            gate2merge=selected_gates(unique(cluster_mapping(userChoise,3)));
+            for i=1:len
+                channels=gates{gate2merge(i),3};
+                clu=channels(cluster_channel);
+                clu_channel{end+1}=clu{1,1};
+            end
+%             check=strfind(channel_names(cluster_channel),'Each');
+            if length(unique(clu_channel))>1
+%             if ~isempty(check{1,1})
+                msgbox(sprintf(['You are not allowed to merge clusters from different\n'...
+                                'gates when they were created separately.']),'Error','error');  
+                return;
+            end
+        end
+    else
+        msgbox(sprintf('You must choose at least two clusters for merging.'),'Error','error');  
+        return;  
+    end                                       
+                           
+    %get the list of cluster numbers in the panel
+    edited=session_data(:,cluster_channel);
+    gateIdx=gates{selected_gates(cluster_mapping(userChoise,3)),2};
+    
+    new_cluster=max(edited)+1;
+    
+    for i = 1:numel(userChoise)
+        choise=(userChoise(i));
+        gatesIdx=gates{selected_gates(cluster_mapping(choise,3)),2};
+        for j = 1: numel(gatesIdx)
+            index= gatesIdx(j);
+            if session_data(index,cluster_channel)==cluster_mapping(choise,1)
+                edited(index,1)=new_cluster;
+            end
+        end
+    end
+    
+    addChannels({sprintf('edited_%s',channel_names{cluster_channel})},edited,1:length(session_data),1:size(gates,1));
+end
+
 function plot_sample_clusters(cluster_channel)
     handles = gethand; 
 
@@ -1071,20 +1713,25 @@ function plot_sample_clusters(cluster_channel)
     initClusterSelection = size(session_data, 2);
     
     %find cluster channel
-    cluster_channel      = get(handles.lstClusterChannels, 'Value');
+    cluster_channel = get(handles.lstClusterChannels, 'Value');
     if isempty(cluster_channel) || ~isDiscrete(cluster_channel) || length(unique(session_data(gate_context, cluster_channel))) > 500, %if channels is empty or channel is not discrete or the number of clusters is too large
 %         [s,v] = listdlg('PromptString','Select a cluster channel:',...
-%                 'SelectionMode','single',...
-%                 'InitialValue', initClusterSelection,...
-%                 'ListString',channel_names);
-        if ~v
-            return;
-        elseif ~isDiscrete(cluster_channel)
-            return;
-        elseif length(unique(cluster_channel)) > 500,
-            return;
-        end
-        cluster_channel = s;
+%                  'SelectionMode','single',...
+%                  'InitialValue', initClusterSelection,...
+%                  'ListString',channel_names);
+%         cluster_channel = s;
+%         
+%         if ~v
+%             return;
+%         elseif ~isDiscrete(cluster_channel)
+%             return;
+%         elseif length(unique(cluster_channel)) > 500,
+%             return;
+%         end
+        return;
+        
+        %set(handles.lstClusterChannels, 'value', cluster_channel);
+        
     end
 
     
@@ -1172,20 +1819,30 @@ function plot_sample_clusters(cluster_channel)
         %plot heat map
         %subplot(10,1,1:9), imagesc(hl_L2_dist, [heat_min,heat_max]);
 
-        subplot(10,1,1:9), imagesc(marker_means);
+        % add this if the channels name are cut off
+%         subplot(10,1,1:9); 
+        imagesc(marker_means);
         %set(title(strcat('Sample ', mat2str(p), ': L2 + higher/lower than median')));
-        set(gca, 'Position', [0.18,0.27,0.8,0.66]);
+%         set(gca, 'Position', [0.18,0.27,0.8,0.66]);
         set(gca, 'ytick', 1:num_clusters);
         if (show_by_cluster_channel)
-            y_labs = strcat(strread(num2str(unique(session_data(gate_context, cluster_channel))'), '%s'),' (',strread(num2str(cells_pr_cluster'), '%s'),')');
+            y_labs = strcat(...
+                strread(num2str(unique(session_data(gate_context, cluster_channel))'), '%s'),...
+                ' (',...
+                num2str(cells_pr_cluster*100,'%2.2f'),...
+                '%)');
         else
-            y_labs = strcat(gates(selected_gates, 1),' (',strread(num2str(cells_pr_cluster'), '%s'),')');            
+            y_labs = strcat(...
+                gates(selected_gates, 1),...
+                ' (',...
+                num2str(cells_pr_cluster*100,'%2.2f'),...
+                ')');            
         end
         set(gca, 'Yticklabel', y_labs);
         set(gca, 'xtick', []);
         colormap(color_map);
         colorbar;
-        xticklabel_rotate([1:length(selected_channels)],90,channel_names(selected_channels));
+        xticklabel_rotate(1:length(selected_channels),75,strcat(channel_names(selected_channels), {' '}));
         
         
     elseif strcmp(plot_type,'Heat map: Distance')
@@ -1317,7 +1974,7 @@ function plot_sample_clusters(cluster_channel)
         
         perplexity = [];
         if(size(clusters,1) < 100)  %100 is arbitrary
-            perplexity = 2;
+            perplexity = 5;
             tsne_out = fast_tsne(session_data(inds,selected_channels),[], perplexity); %running tSNE
         else
             tsne_out = fast_tsne(session_data(inds,selected_channels),110); %running tSNE
@@ -1546,35 +2203,64 @@ end
 function createMeta
     handles = gethand;
     
+    
+    
     gates        = retr('gates');
     sessionData  = retr('sessionData');
     gate_context = retr('gateContext');
     selected_channels = get(handles.lstChannels,'Value');
     gate_names        = get(handles.lstGates, 'String');
     selected_gates = get(handles.lstGates, 'Value');
-    [~, channel_names] = getSelectedIndices(selected_gates);
     
+    clusters_channels = get(handles.lstCluChannels,'Value');
+    channel_index = retr('current_cluster_channels');
+    cluster_channel= channel_index(clusters_channels);
     
-    %find channels that might be cluster channels => discrete channels
-    
-    params = retr('metaParams');
-    if (isempty(params))
-        params = [];
-        params.neighbors = 2;
-        params.metric = 'euclidean';
-        params.selected_gates = gate_names;
-        params.all_channels = channel_names;
-        params.cluster_channel = 1;
-        %params.all_channels = numel(channel_names');
+    if isempty(clusters_channels)
+        uiwait(msgbox('No cluster channel was chosen!','Error','error'));  
+        return; 
     end
     
-    params = create_metaGUI('gates', gate_names, 'params', params);
-    if (isempty(params))
+    out=create_metaGUI([]);
+    
+    %the user pressed Cancel
+    if isempty(out)
         return;
     end
-    put('metaParams', params);
-
-
+    
+    %get the user choices
+    metaMehtod=out.method;
+    k_neigh=out.neigh;
+    selection=out.nMetric;
+    
+    %if the user didn't choose K or the K=0
+    if (isempty(k_neigh) || str2num(k_neigh) == 0)
+        uiwait(msgbox('Wrong K was chosen!','Error','error'));
+        return;
+    end
+    
+    k_neigh = str2num(k_neigh);
+    
+    %getting the distance metric
+    distance = '';
+    
+    switch selection %defining distance from user selection
+        case 1
+            distance = 'euclidean';
+        case 2
+            distance = 'seuclidean';
+        case 3
+            distance = 'cosine';    
+        case 4
+            distance = 'correlation';
+        case 5
+            distance = 'spearman';
+        case 6
+            distance = 'cityblock';
+        case 7
+            distance = 'mahalanobis';     
+    end
+    
     try
         
         %finding indeces of selected samples (currently assuming that no overlap occures between indeces)
@@ -1583,17 +2269,48 @@ function createMeta
             inds{i} = find(ismember(gate_context, gates{selected_gates(i),2}));
         end
         
-        [~, ~, meta_cluster_channel] = LOUVAIN_meta_clusters(sessionData(gate_context,selected_channels), sessionData(gate_context,params.cluster_channel), inds, params.neighbors, params.metric);
-        addChannels({'meta_clusters'}, meta_cluster_channel, gate_context);
+        %computing the centroids and running meta clustering
+        meta_channel = sessionData(gate_context, cluster_channel);
+        %[centroids, cluster_mapping] = get_centroids(sessionData(gate_context,selected_channels), inds, sessionData(gate_context, cluster_channel), meta_channel);
+        
+        
+        
+        [centroids, cluster_mapping,~,~] = compute_cluster_centroids(...
+                                    sessionData(gate_context, selected_channels), inds, ...
+                                    sessionData(gate_context, cluster_channel)); 
+        
+        
+        if (metaMehtod==1)
+            [meta_cluster_channel, ~] = phenograph(centroids, k_neigh,'distance',distance);
+            metalable=['metaPhenoGraphK' num2str(k_neigh)];
+        else
+            [meta_cluster_channel, ~] = kmeans(centroids, k_neigh,'distance',distance);
+            metalable=['metaKmeansK' num2str(k_neigh)];
+        end
+        %computing the meta cluster lable of the whole data
+        new_meta_cluster_channel=[];
+        new_IndCellsOfGateIandCluster=[];
+        for i=1:length(meta_cluster_channel)
+                cluster=cluster_mapping(i,1); % the original cluster of index i in the centroids
+                sel_gates=cluster_mapping(i,3); %the gate in index i in the centroids
+                indicesOfGateI=gates{selected_gates(sel_gates),2}; % indices of gate i in the data
+                cellsOfGateIandCluster=[sessionData(indicesOfGateI,cluster_channel)==cluster]; %the cells with the wanted gate and cluster
+                
+                IndCellsOfGateIandCluster= indicesOfGateI(cellsOfGateIandCluster); %their indices
+                
+                new_meta_cluster_channel((end+1):(end+length(IndCellsOfGateIandCluster)))=meta_cluster_channel(i); %all meta lables
+                new_IndCellsOfGateIandCluster((end+1):(end+length(IndCellsOfGateIandCluster)))=IndCellsOfGateIandCluster; %all indices
+        end
+        addChannels({metalable}, new_meta_cluster_channel', new_IndCellsOfGateIandCluster');
 
     catch e
         uiwait(msgbox(sprintf('Finding meta clusters failed: %s', e.message),...
-            'Error','error'));  
+            'Error','error'));
+        disp(getReport(e,'extended'));
         return;        
     end
     
 end
-
 
 function plot_meta_clusters(cluster_channel)
     %fprintf('Meta clusters not implemented yet\n');
@@ -1722,7 +2439,7 @@ function plot_meta_clusters(cluster_channel)
         dot_size = 500/max(cluster_mapping(:,5)) * cluster_mapping(:,5)+5;  %rescaling size so they make sense size wise
         
         %finding previous tSNE or calculating tSNE
-        tSNE_out = retr('tsneParams');
+        tSNE_out = []; %retr('tsneParams');
         if (isempty(tSNE_out)),
             if (size(centroids, 1) > 10)
                 tSNE_out = fast_tsne(centroids, 50, 10);    %running tSNE on centroids
@@ -1730,19 +2447,33 @@ function plot_meta_clusters(cluster_channel)
                 tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
             end
         end
-        put('tsneParams', tSNE_out);
+        %put('tsneParams', tSNE_out);
         
         %finding color channel
         color_chan = get(handles.lstTsneColorBy,'Value');        
-        
+        color_chan = color_chan-1;
         %testing if color_chan is discrete (= maybe cluster channel) or continous (maybe marker channel)
         %if isDiscrete(color_chan) && length(unique(session_data(gate_context, color_chan))) < 500,
-        if color_chan == meta_channel,
+        if (color_chan<0)
+            return;
+        elseif color_chan ==0 % color by gate         
+            tsne_col = cluster_mapping(:,3);
+    matColors = distinguishable_colors(p);
+
+%     matColors = [[5, 5, 255];[ 0, 221, 225];[ 0, 88, 0];...
+%                 [ 255, 132, 132];[ 70, 79, 158];[ 193, 255, 0];...
+%                 [ 149, 132, 0];[ 123, 0, 0];[ 79, 211, 149];...
+%                 [ 220, 158, 246];[ 255, 18, 211];[ 106, 26, 123];...
+%                 [ 97, 18, 246];[ 225, 193, 255];[ 123, 167, 141];...
+%                 [ 9, 132, 246];[ 0, 113, 132];[ 230, 213, 132];...
+%                 [ 113, 13, 132];[ 22, 08, 86];[ 82, 12, 3]]./255;
+            colormap(matColors);
+            scatter(tSNE_out(:,1), tSNE_out(:,2), (dot_size+5)*1, tsne_col,'fill'); %plotting
+%             legend(gate_names);
+        elseif color_chan == meta_channel,
             tsne_col = cluster_mapping(:,1);
             scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, dot_size); %plotting
-
-        else
-            
+        else    
             %finding marker means for marker selected
             inds = {};
     
@@ -2292,17 +3023,12 @@ function hPlot=plotScatter
                 end
 
                 
-        if (~get(handles.chkDensity, 'Value'))
-                myplotclr(vX, vY, vZ, vColor, 'o', colormap, clim, nSelChannels == 3);   
-        end
+                if (~get(handles.chkDensity, 'Value'))
+                        myplotclr(vX, vY, vZ, vColor, 'o', colormap, clim, nSelChannels == 3);   
+                end
                 colorbar;
                 caxis(clim);
-                
-                
-%                   vSize = sessionData(gateContext, end);
-%                  vSize = mynormalize(vSize, 99.99)*1000;
-%                   myscatter_by_point(vX, vY, vColor, vSize, false);
-
+                                
             else % color by community.
                 
                 if get(handles.chkGradientCommunities, 'Value')
@@ -2331,7 +3057,7 @@ function hPlot=plotScatter
             
             % plot 
             if (~get(handles.chkDensity, 'Value'))
-            myplotclr(vX, vY, vZ, vColor_discrete, 'o', clr, [min(vColor_discrete), max(vColor_discrete)], false)
+                myplotclr(vX, vY, vZ, vColor_discrete, 'o', clr, [min(vColor_discrete), max(vColor_discrete)], false)
             end
             colorbar off;
             hl=legend(cellfun(@(n)(num2str(n)), num2cell(unique(vColor)), 'UniformOutput', false));                    
@@ -2343,8 +3069,7 @@ function hPlot=plotScatter
 %                   myscatter_by_point(vX, vY, vColor, vSize, true);
 
             fixLegendMarkerSize;
-            end
-            
+            end            
         % color the difference of a channel between two gates
         else  
             basal_gate = gates{selected_gates(1), 2};
@@ -2480,21 +3205,23 @@ function hPlot=plotScatter
         h = zlabel(' ');
         set(h, 'String', '');
 
-        if (get(handles.chkDensity, 'Value'))
+        if get(handles.chkDensity, 'Value')
             [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 32);
             
-%             cmap = jet;
-%             cmap(1, :) = [1, 1, 1];
-%             colormap(cmap);
             
             hold on;
-%             drawnow;
             contour(x, y, density, 1024);
             hold off;
         end
-        if (get(handles.chkLog, 'Value'))
-            set(gca, 'XScale', 'log');
-            set(gca, 'YScale', 'log');
+        if get(handles.chkLog, 'Value')
+            if get(handles.chkDensity, 'Value')
+                setStatus('Warning: cannot log scale axis in density mode');
+                set(gca, 'XScale', 'linear');
+                set(gca, 'YScale', 'linear');
+           else
+                set(gca, 'XScale', 'log');
+                set(gca, 'YScale', 'log');
+            end
         else
             set(gca, 'XScale', 'linear');
             set(gca, 'YScale', 'linear');
@@ -2544,8 +3271,9 @@ function fixLegendMarkerSize
 end
 
 function enableGating(handles, state)
-    set(handles.btnGatePoly, 'Enable', state);
-    set(handles.btnGateRect, 'Enable', state);   
+    set(handles.btnGatePoly,    'Enable', state);
+    set(handles.btnGateRect,    'Enable', state);   
+    set(handles.btnGateEllipse, 'Enable', state);   
 end
 
 function plot_KNN_diff(color_ch)
@@ -2750,30 +3478,28 @@ function runTSNE(normalize)
         return;
     end
     
+    msg = 'BH-SNE started. Refer to Command window or std-o for progress.';
+    hwaitbar = waitbar(0,msg);
     
-    hwaitbar = waitbar(0,'BH-SNE started. Refer to Command window or std-o for progress...');
-% 	waitbar(0,hwaitbar, sprintf('Begin tSNE on %g points.\n Please be patient and check standard output for progress updates', numel(gate_context)));
-%     map = compute_mapping(sessionData(gate_context, selected_channels), 'tSNE', ndims);
+
     tic;
     data = sessionData(gate_context, selected_channels);
-        
-%     selection = questdlg('Compute over normalized data?' ,...
-%                      'Normalize',...
-%                      'Yes','No','Yes');
-%     if strcmp(selection,'Yes')
-%         data = mynormalize(data, 99);
-%     end
+            
+    try
+        map = fast_tsne(data, 110);
+    catch 
+        msgbox(...
+                ['tSNE Failed: Common causes are \n' ...
+                'a) illegal cyt installation path - spaces in path.\n' ...
+                'b) illegal cyt installation path - no writing persmissions in folder.\n' ...
+                'c) perplexity too high caused by insufficient number of points.'],...
+               'Error','error');  
+        return;        
+    end
 
-%     new_selected_channels = selected_channels(prctile(data, 99) >= 2.2);
-%     set(handles.lstChannels,'Value', new_selected_channels);
-%     data(:, prctile(data, 99) < 1.2) = [];
-      
-    map = fast_tsne(data, 110);
-%     map = tsne(data, [], ndims);
     disp(sprintf('map generated in %g m', toc/60));
     setStatus('Done tSNE calc. Setting results to gates');
 
-% 	waitbar(2/n, hwaitbar);
     new_channel_names = cell(1, ndims);
     for i=1:numel(new_channel_names)
         new_channel_names{i} = sprintf('bh-SNE%g', i);
@@ -2878,6 +3604,7 @@ function runLouvain(handles)
         [IDX, ~] = phenograph(data, k_neigh);
         addChannels({sprintf('pheno%g', k_neigh)}, IDX);
     end
+    
       % -- Lovain implementation. 
 %     handles = gethand;
 %     
@@ -2958,14 +3685,14 @@ function addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
         p = find(d==1);
         m = find(d==-1);
         lr = find(m-p>=size(new_data, 2));
-        last_def_channel = undef_channel_ind - 1 + (p(lr) - 1);
+        last_def_channel = undef_channel_ind - 1 + (p(lr(1)) - 1);
     else
         last_def_channel = size(sessionData,2);
     end
         
     for i=selected_gates
         
-        % add new tsne channel names to gate
+        % add new channel names to gate
         channel_names = gates{i, 3};
         if (last_def_channel-numel(channel_names) > 0)
             % add blank\placeholder channel names
@@ -3106,98 +3833,98 @@ end
 % --------------------------------------------------------------------
 function btnGate_ClickedCallback(~, ~, ~, isPoly)
     handles = gethand;
-    
-    set(handles.btnGatePoly, 'Enable', 'off');
-    set(handles.btnGateRect, 'Enable', 'off');
+        
+    %disable the btns
+    enableGating(handles, 'off');
+    set(handles.btnPickCluster, 'Enable', 'off');
     
     sessionData  = retr('sessionData');
     gateContext   = retr('gateContext');
     selectedChannels = retr('selectedChannels');
     selGates = get(handles.lstGates, 'Value');
 
+    %if the objects are cells - not clusters
+    if ~get(handles.btnCluster,'Value'); 
     
-    
-    CH1 = selectedChannels(1);
-    CH2 = selectedChannels(2);
+        setStatus('Waiting: Double click on node when finished');
+        gate_inds = tsne_gate(gcf, sessionData(gateContext, selectedChannels), 1, isPoly);
+        setStatus([sprintf('you have gated: %g data points %2.2f', numel(gate_inds), (numel(gate_inds)/numel(gateContext))*100) '%']); 
 
-    mapped_data = sessionData(gateContext, [CH1 CH2]);
-    type = isPoly;
-    
-    if strcmp(type, 'rect')
-        h = imrect(gca);
+        if size(gate_inds, 2) > 0
+            % create new gate
+            created=createNewGate(gateContext(gate_inds), retr('channelNames'));
 
-        disp('Adjust your selection. Double click on node when finished');
-        setStatus('Adjust your selection. Double click on node when finished');
-        rect = wait(h);
+            % if more than one gate was selected - add a channel 'gate source'
+            gates = retr('gates');        
+            if created && numel(selGates) > 1
+                sessionData     = retr('sessionData');
+                nDataLength     = size(sessionData,1);
+                indGateSource   = size(gates, 1);
+                gateSources     = zeros(nDataLength, 1);
 
-        left = rect(1);
-        bottom = rect(2);
-        width = rect(3);
-        height = rect(4);
+                % create a new channel for gate course index.
+                for selGate=selGates
+                    gateSources(gates{selGate, 2}) = selGate;
+                end
 
-        gate = find((mapped_data(:,1)>left) & (mapped_data(:,1)<left+width) & (mapped_data(:,2)>bottom) & (mapped_data(:,2)<bottom+height));
-    else
-        if strcmp(type, 'poly')
-            h = impoly(gca);
-        elseif strcmp(type, 'ellipse')
-            h = imellipse(gca);
-        end
-
-        disp('Adjust your selection. Double click on node when finished');
-        setStatus('Adjust your selection. Double click on node when finished');
-        vert = wait(h);
-
-        gate = find(inpoly(mapped_data, vert));
-    end
-    setStatus([sprintf('you have gated: %g data points %2.2f', numel(gate), (numel(gate)/numel(gateContext))*100) '%']); 
-
-    if size(gate, 2) > 0
-        % create new gate
-        created=createNewGate(gateContext(gate), retr('channelNames'));
-
-        % if more than one gate was selected - add a channel 'gate source'
-        gates = retr('gates');        
-        if created && numel(selGates) > 1
-            sessionData     = retr('sessionData');
-            nDataLength     = size(sessionData,1);
-            indGateSource   = size(gates, 1);
-            gateSources     = zeros(nDataLength, 1);
-
-            % create a new channel for gate course index.
-            for selGate=selGates
-                gateSources(gates{selGate, 2}) = selGate;
+                addChannels({'gate_source'}, gateSources, 1:nDataLength, indGateSource);
+            else
+                set(handles.btnPickCluster, 'Enable', 'off');
             end
-            
-            addChannels({'gate_source'}, gateSources, 1:nDataLength, indGateSource);
         end
+    else % if the objects are clusters
+        gates        = retr('gates');
+        gate_names   = get(handles.lstGates, 'String');
+
+        %find cluster channel
+        selected_list_cluster = get(handles.lstCluChannels, 'value');
+        cluster_channels      = retr('current_cluster_channels');
+        cluster_channel = cluster_channels(selected_list_cluster);
+      
+        %finding indeces of selected samples (currently assuming that no overlap occures between indeces)
+        inds = {};
+        for i=1:length(selGates),
+            inds{i} = find(ismember(gateContext, gates{selGates(i),2}));
+        end
+    
+        % finding cluster centroids and mapping between clusters
+        [centroids, cluster_mapping,cluster_sizes,cellsInCluster] = ...
+                        compute_cluster_centroids(...
+                                 sessionData(gateContext, selectedChannels),...
+                                 inds, ...
+                                 sessionData(gateContext, cluster_channel)); 
+    
+        tSNE_out = retr('recenttsne');
+
+        % get the choosen clusters from the user
+        setStatus('Waiting: Double click on node when finished');
+        gated_clusters = tsne_gate(gcf, tSNE_out, 1, isPoly); 
+        setStatus(sprintf('you have gated: %g clusters', numel(gated_clusters))); 
+        
+        if numel(gated_clusters) > 0
+            all_channel_names = retr('channelNames');
+            for cluster_id=gated_clusters(:)'
+                gate_num = selGates(cluster_mapping(cluster_id, 3));
+                gate_name=gate_names{gate_num};
+                original_cluster=cluster_mapping(cluster_id,1);
+                
+                new_gate_name = [gate_name '- cluster ' num2str(original_cluster)];
+                gate_inds = gates{gate_num,2};
+                cluster_inds_in_gate = sessionData(gate_inds, cluster_channel)==original_cluster;
+                new_gate_inds = gate_inds(cluster_inds_in_gate);
+                
+                createNewGate(new_gate_inds, all_channel_names, {new_gate_name});
+            end
+        end
+        set(handles.btnPickCluster, 'Enable', 'on');
     end
-    
-    set(handles.btnGatePoly, 'Enable', 'on');
-    set(handles.btnGateRect, 'Enable', 'on');
-    
+    enableGating(handles, 'on');
 end
 
 function btnGateVal_Callback
-    handles = gethand;
-    sessionData  = retr('sessionData');
-    gateContext   = retr('gateContext');
-    selectedChannels = retr('selectedChannels');
-    CH1 = selectedChannels(1);
-    CH2 = selectedChannels(2);
-
-    setStatus('Waiting: Double click on node when finished');
-    gate = tsne_gate(gcf, sessionData(gateContext, [CH1 CH2]), 1, isPoly);
-    setStatus(sprintf('you have gated: %g data points', numel(gate))); 
-
-    if size(gate, 2) > 0         
-        createNewGate(gateContext(gate), retr('channelNames'));
-
-        gates         = retr('gates');
-%         set(handles.lstGates, 'String', gates(:, 1));
-%         set(handles.lstIntGates, 'String', gates(:, 1));
-    end
-    
+return; % TODO delete this function 
 end
+
 % --- Executes on selection change in Scatter's axis combo boxes.
 function pupAxis_Callback(~, ~, ~)
     handles = gethand;
@@ -3212,6 +3939,18 @@ function pupAxis_Callback(~, ~, ~)
         put('selectedChannels', [get(handles.pupXAxis, 'Value') get(handles.pupYAxis, 'Value') (get(handles.pupZAxis, 'Value')-1)]);
     end
     plotScatter;
+end
+
+function btnGatesContextMenu_Callback(hObject, ~, ~)
+     handles = gethand;
+     ctm = get(handles.lstGates, 'UIContextMenu'); 
+     showcontextmenu(hObject,ctm);
+end
+
+function btnChannelsContextMenu_Callback(hObject, ~, ~)
+     handles = gethand;
+     ctm = get(handles.lstChannels, 'UIContextMenu'); 
+     showcontextmenu(hObject,ctm);
 end
 
 % --- Executes on selection change in pupXAxis.
@@ -3267,6 +4006,56 @@ function btnIntersect_Callback(hObject, ~, ~)
     
     lstGates_Callback;
 end
+
+% --- Executes on button press in btnCluster.
+function btnCluster_Callback(hObject, ~, ~)
+    
+    if get(hObject,'Value')
+    	% Toggle button is pressed-take appropriate action
+        set(hObject, 'cdata', brighten(double(get(hObject, 'cdata')), double(-0.5)));
+        
+        handles = gethand;
+        
+        pos = get(handles.lstChannels, 'Position');
+        pos(3) = pos(3)/2.2;
+        set(handles.lstChannels, 'Position', pos);
+        set(handles.lstCluChannels, 'Visible', 'on');
+        set(handles.cmiMetaCluster, 'Enable', 'on');
+    else
+    	% Toggle button is not pressed-take appropriate action
+        set(hObject, 'cdata', brighten(double(get(hObject, 'cdata')), double(double(0.5))));
+
+        handles = gethand;
+        pos = get(handles.lstChannels, 'Position');
+        pos(3) = pos(3)*2.2;
+        set(handles.lstChannels, 'Position', pos);
+  
+        set(handles.lstCluChannels, 'Visible', 'off');
+        set(handles.cmiMetaCluster, 'Enable', 'off');
+    end
+    
+    lstChannels_Callback;
+end
+
+%find Discrete channels in the channels list and the copy to cluster channel list
+function filterDiscreteChannels(channel_names)
+    handles = gethand;
+    channel_index=[];
+    cluster_channels={};
+    for i=1:length(channel_names)
+        if isDiscrete(i)
+            channel_index(end+1)=i;
+            cluster_channels(end+1)=channel_names(i);
+        end
+    end
+    
+    setChannelNamesToAxis(handles.lstCluChannels, cluster_channels);
+    value = max(1, get(handles.lstCluChannels,'Value'));
+    set(handles.lstCluChannels,'Value', min(value, numel(cluster_channels)));
+    put('current_cluster_channels', channel_index);
+    
+end
+
 
 function refreshGates
     handles = gethand;
@@ -3352,6 +4141,18 @@ function btnSaveGate_Callback(~, ~, ~)
     end
 end
 
+% --- Executes on button press in chkDegVar.
+function chkDegVar_Callback(~, ~, ~)
+    plot_cluster_heat_map
+end
+
+% --- Executes on button press in chkScale.
+function chkScale_Callback(~, ~, ~)
+    plot_cluster_heat_map
+end
+
+
+
 % --- Executes on button press in btnLoadGates.
 function btnLoadGates_Callback(~, ~, ~)
     OpenMenuItem_Callback
@@ -3435,6 +4236,13 @@ function showGettingStarted
 end
 
 function cmiAbout_CreateFcn(hObject, ~, ~)
+
+end
+
+function lstClusterNum_CreateFcn(hObject, ~, ~)
+	    if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+        set(hObject,'BackgroundColor','white');
+    end
 
 end
 
@@ -4024,6 +4832,15 @@ function lstIntGates_Callback(~, ~, ~)
 lstGates_Callback;
 end
 
+% --- Executes on selection change in lstCluChannels.
+function lstCluChannels_Callback(~, ~, ~)
+lstChannels_Callback;
+end
+
+function lstTsneColorBy_Callback(~, ~, ~)
+plot_cluster_tsne;
+end
+
 % --- Executes on selection change in pupKNN.
 function pupKNN_Callback(hObject, eventdata, handles)
     plotScatter;
@@ -4102,16 +4919,31 @@ function btnTransformGate_CreateFcn(hObject, ~, ~)
 end
 
 % --- Executes during object creation, after setting all properties.
-function btnContextMenu_CreateFcn(hObject, ~, ~)
+function btnGatesContextMenu_CreateFcn(hObject, ~, ~)
+    placeIcon(hObject, 'gear.gif');
+end
+
+function btnChannelsContextMenu_CreateFcn(hObject, ~, ~)
     placeIcon(hObject, 'gear.gif');
 end
 
 function btnIntersect_CreateFcn(hObject, ~, ~)
-    placeIcon(hObject, 'intersect.png');
+    placeIcon(hObject, 'intersect.gif');
+end
+
+function btnClusters_CreateFcn(hObject, ~, ~)
+    placeIcon(hObject, 'cluster.gif');
 end
 
 % --- Executes during object creation, after setting all properties.
 function lstIntGates_CreateFcn(hObject, ~, ~)
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+end
+
+% --- Executes during object creation, after setting all properties.
+function lstCluChannels_CreateFcn(hObject, ~, ~)
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
@@ -4589,11 +5421,11 @@ function runPCA
 end
 
 function add_gate(name, inds, channel_names)
-gates = retr('gates');
-gates{end+1, 1} = name;
-gates{end, 2} = inds;
-gates{end, 3} = channel_names;
-put('gates', gates);
+    gates = retr('gates');
+    gates{end+1, 1} = name;
+    gates{end, 2} = inds;
+    gates{end, 3} = channel_names;
+    put('gates', gates);
 end
 
 function flocked_data = flock(data)
@@ -4734,109 +5566,139 @@ function louvainEach
 end
 
 function phenoEach
-    handles = gethand; % GUI handles to retrieve info from gui as below
-
-    selected_gates    = get(handles.lstGates, 'Value'); % currently selected 
-    selected_channels = get(handles.lstChannels, 'Value'); % ---------------
-
-    session_data  = retr('sessionData'); % all data
-    gates         = retr('gates'); % all gates (names\indices) in cell array
-    gate_context  = retr('gateContext'); % indices currently selected
-    channel_names = retr('channelNames');
- 
-    % ask user for cluster count to recognize
-    defualtK = {'30'};
-    k_neigh = inputdlg('Enter Number of Neighbors to use: ',...
-                          'PhenoGraph', 1, defualtK);
-                     % 'cluster each', 1, {num2str(floor(sqrt(numel(gate_context)/2)))}); 
+    handles = gethand;
     
-    if (isempty(k_neigh) || str2num(k_neigh{1}) == 0)
+    gates        = retr('gates');
+    session_data  = retr('sessionData');
+    selected_channels = get(handles.lstChannels,'Value');
+    gate_names        = get(handles.lstGates, 'String');
+    selected_gates = get(handles.lstGates, 'Value');
+    
+    out=runPhenographGUI([]);
+    
+    %the user pressed Cancel
+    if isempty(out)
         return;
     end
     
-    k_neigh = str2num(k_neigh{1});
-    
-    % ask user for the distance matric
-    str={'Euclidean','Seuclidean','Cosine','Correlation','Spearman','Cityblock'};
-    [selection,ok] = listdlg('PromptString','Select Distance Metric:',...
-                'SelectionMode','single','ListString',str,'Name','PhenoGraph',...
-                'ListSize',[160 80])
-    
-    if (ok == 0) %if user press Cancel
+    %get the user choices
+    mehtod=out.method;
+    k_neigh=out.neigh;
+    selection=out.nMetric;
+        
+    try
+        %if the user didn't choose K or the K=0
+        if (isempty(k_neigh) || str2num(k_neigh) == 0)
+            uiwait(msgbox('K must be a positive integer','Error','error'));
+            return;
+        end
+
+        k_neigh = str2num(k_neigh);
+    catch
+        uiwait(msgbox('K must be a positive integer','Error','error'));
         return;
     end
     
+    %getting the distance metric
     distance = '';
     
     switch selection %defining distance from user selection
         case 1
             distance = 'euclidean';
         case 2
-            distance = 'cosine';
+            distance = 'seuclidean';
         case 3
-            distance = 'correlation';
+            distance = 'cosine';    
         case 4
-            distance = 'spearman';
+            distance = 'correlation';
         case 5
+            distance = 'spearman';
+        case 6
             distance = 'cityblock';
+        case 7
+            distance = 'mahalanobis';     
     end
+
+    allClusters=[];   
+    gate_context=[];   
+    if mehtod==1 % phenograph each gate separately 
+        hWaitbar = waitbar(0,'Computing PhenoGraph for each gate separately ...');
+
+        uniqueID={};
+        nSelectedGates = numel(selected_gates);
+        for i=1:nSelectedGates
+            waitbar((i-1)/nSelectedGates, hWaitbar, sprintf('%g/%g Computing PhenoGraph on %s (%g points)...', i, nSelectedGates,gates{selected_gates(i), 1}, numel(gates{selected_gates(i), 2})));
+
+            data = session_data(gates{selected_gates(i), 2}, selected_channels);
+
+            [clusterLable,~,~,ID] = phenograph(data, k_neigh,'distance',distance);
             
-    for i=1:numel(selected_gates)
-        data = session_data(gates{selected_gates(i), 2}, selected_channels);
+            uniqueID{end+1}=ID;
+            maxClu = max([allClusters;0]);
+            clusterLable(find(clusterLable))=clusterLable(find(clusterLable))+maxClu;            
+            
+            allClusters=[allClusters;clusterLable];
+            gate_context = [gate_context(:);gates{selected_gates(i), 2}(:)];
+        end
+
+        waitbar(1, hWaitbar, 'Saving Results...');
+
+        % Giving a temporary name to the channel
+        tmpChannelName = 'PhenoGraph Each UID0000';
+        addChannels({tmpChannelName}, allClusters, gate_context);
+        gates = retr('gates');
         
-        [IDX, ~] = phenograph(data, k_neigh,'distance',distance);
-        addChannels({'phenograph'}, IDX, gates{selected_gates(i), 2}, selected_gates(i));
+        % Changing the channels name by the unique ID
+        for i=1:numel(selected_gates)
+            gate=selected_gates(i);
+            ch_names=gates{gate,3};
+            chTMP = cellstrfnd(ch_names, tmpChannelName);
+            ch_names(chTMP) = {sprintf('PhenoGraph Each K%g %s',...
+                                      k_neigh,uniqueID{i})};
+            gates{gate,3}=ch_names;           
+        end
+        
+        put('gates', gates);
+        
+        close(hWaitbar);
+        setStatus('Done computing PhenoGraph.');
+        
+        lstGates_Callback;       
+        return;  
+    else  % phenograph all gates together 
+        hWaitbar = waitbar(0,sprintf('Computing PhenoGraph (%g points) ...', numel(gate_context)));
+        data = session_data(gate_context, selected_channels);
+
+        [clusterLable,~,~,ID] = phenograph(data, k_neigh,'distance',distance);
+
+        waitbar(1, hWaitbar, 'Saving Results...');
+        channelName = sprintf('PhenoGraph K%g %s', k_neigh, ID);
+        addChannels({channelName}, clusterLable, gate_context);
+        close(hWaitbar);
     end
-    
-    return;  
-
 end
-
+                                                                      
 function kmeansEach
     handles = gethand; % GUI handles to retrieve info from gui as below
 
     selected_gates    = get(handles.lstGates, 'Value'); % currently selected 
     selected_channels = get(handles.lstChannels, 'Value'); % ---------------
-
     session_data  = retr('sessionData'); % all data
     gates         = retr('gates'); % all gates (names\indices) in cell array
-    gate_context  = retr('gateContext'); % indices currently selected
-    channel_names = retr('channelNames');
  
-    for i=1:numel(selected_gates)
-        k_clusters = 4;
-        addChannels({'kmeans4'}, kmeans(session_data(gates{selected_gates(i), 2}, selected_channels), k_clusters,'Display', 'iter', 'EmptyAction', 'singleton'), gates{selected_gates(i), 2}, selected_gates(i));
+    % ask user for cluster count to recognize
+    n_clusters = inputdlg('Enter number of clusters: ',...
+                          'K-Means', 1, {num2str(floor(sqrt(numel(gate_context)/2)))}); 
+    
+    if (isempty(n_clusters) || str2num(n_clusters{1}) == 0)
+        return;
     end
-    
-    return;  
 
+    k_clusters = str2num(n_clusters{1});
+    for i=1:numel(selected_gates)
+        addChannels({'kmeansEach'}, kmeans(session_data(gates{selected_gates(i), 2}, selected_channels), k_clusters,'Display', 'iter', 'EmptyAction', 'singleton'), gates{selected_gates(i), 2}, selected_gates(i));
+    end
 end
-
-
-% ------------
-% Run Phenograph on different gates, channels, K and distance matric in a
-% new window.
-% !!! Not ready for use - need to add channel by getting the output from
-% phenographGUI. !!!
-% ------------
-
-function runPhenograph
-    handles = gethand;
-    
-    gates        = retr('gates');
-    sessionData  = retr('sessionData');
-    gate_context = retr('gateContext');
-    selected_channels = get(handles.lstChannels,'Value');
-    gate_names        = get(handles.lstGates, 'String');
-    selected_gates = get(handles.lstGates, 'Value');
-    [~, channel_names] = getSelectedIndices(selected_gates);
-    
-    phenographGUI('session_data',sessionData,'gates',gates, 'gatesNames', gate_names, 'channelNames', channel_names);
-    
-    
-end
-
-
 
 % ------------
 % compare between two maps
@@ -4865,377 +5727,9 @@ function openEndedAction
     gates         = retr('gates'); % all gates (names\indices) in cell array
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
-        
+
+    return; 
     
-     return;
-    
-   %% Reorder thymus panel channel names
-    chDNA = cellstrfnd(channel_names, 'dna');
-    channel_names(chDNA) = strcat('..', channel_names(chDNA))
-
-    chBEAD = cellstrfnd(channel_names, 'bead');
-    channel_names(chBEAD) = strcat('.', channel_names(chBEAD))
-
-    chBEAD = cellstrfnd(channel_names, 'live');
-    channel_names(chBEAD) = strcat('..', channel_names(chBEAD))
-
-    channel_names{1} =  '...time';
-    channel_names{2} =  '...viability';
-    
-    [idx, sorted] = sort(channel_names);
-    session_data = session_data(:, sorted);
-    for g=1:size(gates, 1)
-        gates{g, 3} =   idx;
-    end
-    
-    put('gates', gates);
-    put('sessionData', session_data);
-
-    data = session_data(gate_context, selected_channels);
-    ell = GenerateLoop(data(:, 1)', data(:,2)');
-    save 'ell3.mat' ell;
-    IDX = knnsearch(ell, data);
-    
-    addChannels({'ERA'}, IDX);
-
-%     return;
-    
-    %% gate on DNA vs DNA channels
-    cofactor = 5;
-    gate_ind = selected_gates(1);
-    debris_threshold = 0.9;
-
-    chDNA = cellstrfnd(gates{gate_ind, 3}, 'DNA');
-    DNA = session_data(gates{gate_ind, 2}, chDNA);
-    DNA = asinh( DNA ./ cofactor ); % transform data
-    dna_gm = gmdistribution.fit(DNA, 2);
-    [~,j] = max(sum(dna_gm.mu,2));
-    P = dna_gm.posterior(DNA);
-    debris = gates{gate_ind, 2}(P(:,j) > debris_threshold);
-    addGate('Thymus1 removed debris by dna', debris);
-%     return; 
-    
-    %% create a hsin transformed gate of the data
-    gates = retr('gates');
-	selected_gates    = get(handles.lstGates, 'Value'); % currently selected 
-    cofactor = 5;
-    insert_loc = size(session_data, 1)+1;
-    session_data(end+1:end+length(gate_context), :) =  asinh( session_data(gate_context, :) ./ cofactor );
-    put('sessionData', session_data);
-    addGate([gates{selected_gates, 1} ' transformed'], insert_loc:(insert_loc+length(gate_context)-1));
-%     return;
-
-    %% bubble check
-    binsize = 20;
-    current_figure = gcf;
-    h = figure;
-    try
-        for i=1:numel(selected_gates)
-            data = session_data(gates{selected_gates(i), 2}, :);
-            nbins = floor(size(data,1)/binsize);
-            data = data(1:nbins*binsize, :);
-            [~, idx] = sort(data(:, 1));
-            for ch=2:length(channel_names)
-                valuesperbin = reshape(data(idx, ch), binsize, nbins);
-                means = mean(valuesperbin, 1);
-                plot(1:nbins, means , '-');
-                title(channel_names{ch});
-                print(h,'-dpng', validfilename(sprintf('%s %s vs time', gates{i, 1}, channel_names{ch})));
-            end
-        end
-    catch e
-
-        % Return to base figure
-        set(0,'CurrentFigure', current_figure);
-        close(h);
-
-        disp(getReport(e,'extended'));
-    end
-    set(0,'CurrentFigure', current_figure);
-    close(h);
-
-%     return;
-
-   %% grab an untrasformed gate from transformed gate
-    transformed_cd8_gate_indices = gates{selected_gates(2), 2};
-    transformed_all_points = gates{selected_gates(1), 2};
-    gate_inds = find(ismember(transformed_all_points,transformed_cd8_gate_indices));
-    CD8high_untransformed = gates{selected_gates(1) - 1, 2}(gate_inds);
-    addGate('cd8high untransformed', CD8high_untransformed);
-    return;
- 
-    %%
-%     data = session_data(gate_context, selected_channels);
-%     IDX = knnsearch(ell, data);
-%     addChannels({'ERA_all'}, IDX); 
-%     IDX = knnsearch(ell(1:65, :), data);
-%     addChannels({'ERA_all'}, IDX); 
-%     return;
-    data = session_data(gate_context, selected_channels);
-    ell = GenerateLoop(data(:, 1)', data(:,2)');
-    save 'ell.mat' ell;
-    IDX = knnsearch(ell, data);
-    
-    addChannels({'ERA'}, IDX);
-
-    return;
-    
-    axis tight;
-    OptionZ.FrameRate=30;OptionZ.Duration=8;OptionZ.Periodic=true;
-    CaptureFigVid([-130,15;-165,10;-200,80;-235,15;-280,10],'3DAML',OptionZ)
-
-    
-    highprc = prctile(session_data(gate_context, selected_channels), 90);
-    channel_names{selected_channels(highprc > 1.5)}
-    return;
-    phenoEach;
-    return;
-    
-    for gi=1:numel(selected_gates)
-        set(handles.lstGates, 'Value', selected_gates(gi)); % currently selected 
-        lstGates_Callback;
-        create_cluster_means(false);
-    end
-    return;
-
-	create_indicator_channels_from_gates
-    return;
-
-    % create a knn graph and export cluster means to graphml
-    [s,v] = listdlg('PromptString','Select a cluster channel:',...
-            'SelectionMode','single',...
-            'InitialValue', length(channel_names),...
-            'ListString',channel_names);
-    if ~v
-        return;
-    end
-    cluster_channel = s;
-    
-    data = session_data(gate_context, selected_channels);
-    grouping = session_data(gate_context, cluster_channel);
-    
-    selection = questdlg('Use normalized means?' ,...
-                     'Normalize',...
-                     'Yes','No','Yes');
-    if strcmp(selection,'Yes')
-        data = mynormalize(data, 99);
-    end
-
-    cluster_ids = unique(grouping)';
-    centers = zeros(length(cluster_ids), length(selected_channels));
-    i=0;
-    for c=cluster_ids
-        i = i+1;
-        cluster_inds = find(grouping==c);
-        centers(i, :) = mean(data(cluster_inds, :));
-    end
-    
-    dists         = pdist2(centers, centers, 'euclidean','Smallest',3);
-    dists         = 1 - dists./max(max(dists));
-    
-    sampleID      = cluster_ids;
-    samplePercent = countmember(cluster_ids, grouping);
-    samplePercent = samplePercent./max(samplePercent);
-    means         = centers;
-    names         = channel_names(selected_channels);
-    
-    node_names  = cell(1, length(cluster_ids));
-    for i = 1:length(cluster_ids)
-        for ch=1:length(selected_channels)
-            node_names{i} = sprintf('%s %s=%g ', node_names{i}, channel_names{selected_channels(ch)}, centers(i, ch));
-        end
-    end
-    
-	coeff = pca(means,2);
-	scatter_by_point(coeff(:,1), coeff(:,2), cluster_ids', floor(samplePercent*2000)); %plotting
-    axis([-1 1 -1 1])
-
-%   write_graphml(dists, sampleID, samplePercent, means, names, node_names);
-    
-    return;
-    
-    % create a knn graph and export cluster means to graphml
-    [s,v] = listdlg('PromptString','Select a cluster channel:',...
-            'SelectionMode','single',...
-            'InitialValue', length(channel_names),...
-            'ListString',channel_names);
-    if ~v
-        return;
-    end
-    cluster_channel = s;
-    
-    data = session_data(gate_context, selected_channels);
-    grouping = session_data(gate_context, cluster_channel);
-    
-    selection = questdlg('Use normalized means?' ,...
-                     'Normalize',...
-                     'Yes','No','Yes');
-    if strcmp(selection,'Yes')
-        data = mynormalize(data, 99);
-    end
-
-    cluster_ids = unique(grouping)';
-    centers = zeros(length(cluster_ids), length(selected_channels));
-    i=0;
-    for c=cluster_ids
-        i = i+1;
-        cluster_inds = find(grouping==c);
-        centers(i, :) = mean(data(cluster_inds, :));
-    end
-    
-    dists         = pdist2(centers, centers, 'euclidean','Smallest',3);
-    dists         = 1 - dists./max(max(dists));
-    
-    sampleID      = cluster_ids;
-    samplePercent = countmember(cluster_ids, grouping);
-    samplePercent = samplePercent./max(samplePercent);
-    means         = centers;
-    names         = channel_names(selected_channels);
-    
-    node_names  = cell(1, length(cluster_ids));
-    for i = 1:length(cluster_ids)
-        for ch=1:length(selected_channels)
-            node_names{i} = sprintf('%s %s=%g ', node_names{i}, channel_names{selected_channels(ch)}, centers(i, ch));
-        end
-    end
-    
-	coeff = pca(means,2);
-	scatter_by_point(coeff(:,1), coeff(:,2), cluster_ids, floor(samplePercent*32)); %plotting
-
-%     write_graphml(dists, sampleID, samplePercent, means, names, node_names);
-    
-    return;
-    
-    % ask user for cluster count to recognize
-    n_clusters = inputdlg('Enter number of clusters: ',...
-                          'EMGM', 1, {num2str(floor(sqrt(numel(gate_context)/2)))}); 
-    
-    if (isempty(n_clusters) || str2num(n_clusters{1}) == 0)
-        return;
-    end
-
-    k_clusters = str2num(n_clusters{1});
-    
-    for gatei = selected_gates
-        % run EMGM
-        clust_alg = 'EMGM';
-        [IDX, model, llh] = emgm(session_data(gates{gatei, 2}, selected_channels)', k_clusters);
-        IDX = IDX';
-
-        % add results to GUI
-        addChannels({sprintf('%s%g',clust_alg, k_clusters)}, IDX, gates{gatei, 2}, gatei);
-    end
-    
-    return;
-    
-    % generate descrete indicator channels from a grouping\cluster channel
-    new_names = {};
-    new_channels = zeros(size(session_data, 1), numel(unique(session_data(:, selected_channels))));
-    for i=unique(session_data(:, selected_channels))'
-        new_names{i+1} = sprintf('%g - phase', i);     
-        new_channels(:, i+1) =  (session_data(:, selected_channels) == i);
-    end
-    addChannels(new_names, new_channels);
-    return;
-%     data = session_data(gate_context, selected_channels);
-%     flocked_data = flock(data);
-% 
-%     new_channel_names = strcat(channel_names(selected_channels), {' flocked'});
-%     addChannels(new_channel_names, flocked_data, gate_context);
-%     return;
-    
-%     BW1 = edge(data,'sobel');
-%     imshow(BW1);
-%     return;
-
-% 	[~, channel_names] = xlsread('/Users/mtadmor/Google Drive/Mitosis/Gabri/16-Feb-2014_CellCCycleTimecourse_Crowding_featurelist.xls');
-%     channel_names = channel_names'; 
-%     gates{1, 3} = channel_names;
-%     put('gates', gates);
-%     
-%    % plotEnrichment;
-%      return;
- 
-        % === run wonderlust
-        
-        normalize = true;
-        data = session_data(gate_context, selected_channels);
-
-        if (normalize)
-            disp('Normalizing according to the 99th percentile...');
-            data = data-repmat(prctile(data, 1, 1), size(data,1),1);
-            data = data./repmat(prctile((data), 99, 1),size(data,1),1);
-
-            data(data > 1) = 1;
-            data(data < 0) = 0;
-            data(isinf(data)) = 0;
-
-        end
-        distance = 'mahalanobis';
-        k = 10; 
-        l = 40;
-        num_graphs = 1; 
-
-    %     [x,y]=ginput
-    %     some_channel = 59;
-    %     [~, s] = max(session_data(gate_context, some_channel));
-%         s = knnsearch(session_data(gates{end, 2}(1), selected_channels), session_data(gates{selected_gates(1),2}, selected_channels));
-%         [~, s] = ismember(data, session_data(gates{end, 2}(1), selected_channels), 'rows');
-        s = find(gates{end, 2}(1)==gate_context);
-
-        num_landmarks = 30; % numel(gate_context)/(k^3);
-
-        predefined_l = [];
-%         timepoint_marker = 115;
-%         for t=unique(session_data(gate_context, timepoint_marker))'
-%             ts = find(session_data(gate_context, timepoint_marker) == t);
-%             predefined_l(end+1) = randsample(ts, 1);
-%         end
-        [traj, lnn] = wanderlust(data, distance, k, l, num_graphs, s, num_landmarks, true, predefined_l);
-
-        save('lnn', 'lnn');
-        traj = traj';
- 
-        new_channel_names = strcat({'traj '},int2str((1:num_graphs).'));
-
-        addChannels(new_channel_names, traj, gate_context);
-   
-    return;
-     
-%     % change gate names
-%     new_names = remove_repeating_strings(gates(selected_gates, 1));
-%     gates(selected_gates, 1) = cellfun(@(name)strrep(name, '-channel 120-', '-'), new_names, 'UniformOutput', false)
-%     put('gates', gates);
-%     
-%     return;
-
-mi = zeros(1, 111);
-    for i=1:111
-        try
-    mi(i) = compute_dremi([T phi(:, i)], .9);
-        catch 
-            continue;
-        end
-    end
-    
-    N = length(gate_context);
-    learn_inds = randsample(1:N,floor(.2*N));
-
-    phi = session_data(gate_context, selected_channels);
-    T = session_data(gate_context, 4); %+ noise(learn_inds,ind, 1);
-
-    lambda = 5;
-    iters = 100;
-
-    flag1 = 1; % type
-    flag2 = 0; % default gamma, init to find min. solution
-    flag3 = 1; % verbose
-
-
-    [mu,dmu,k,gamma] = sparse_learning(phi, T, lambda, iters, flag1, flag2, flag3);
-    
-    return;
-
     % --------- examples and explanation ----------------------------------
     % ---- for example, to plot the curently selected gates\channels, write 
     % along these lines:

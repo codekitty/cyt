@@ -285,12 +285,6 @@ elseif strcmp(fcsheader_type,'FCS3.0')
             elseif strcmp(fcshdr.byteorder,'4,3,2,1')
                 fcsdat = fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'float32','b')';
             end
-        elseif strcmp(fcshdr.datatype,'I')
-            if strcmp(fcshdr.byteorder, '1,2,3,4')
-                fcsdat = fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'uint32','l')';
-            elseif strcmp(fcshdr.byteorder,'4,3,2,1')
-                fcsdat = fread(fid,[fcshdr.NumOfPar fcshdr.TotalEvents],'uint32','b')';
-            end
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%
 %     end
@@ -316,7 +310,7 @@ if nargout>2
 end
 
 if nargout>3 && ~isempty(fcshdr.CompLabels) %RLF. applied to fcsdatscaled rather than fcsdat.
-        
+    
     compcols=zeros(1,nc);
     colLabels={fcshdr.par.name};
     for i=1:nc
