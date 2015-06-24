@@ -519,17 +519,40 @@ function channel_names = combineNames(channel_names1,channel_names2)
 
 end
 % --------------------------------------------------------------------  
-function PrintMenuItem_Callback
-    [filename, pathname, ~] = uiputfile('*.png', 'Save Image');
+ function PrintMenuItem_Callback
+    % copy figure
+    ha = gca;
+    ha.Parent
+    map = colormap;
 
-    if isequal(filename,0) || isequal(pathname,0)
-    return;
+    f_new = figure;
+    movegui(f_new,'northwest'); 
+    copyobj(ha.Parent.Children, f_new);
+    colormap(map);
+    drawnow;
+    
+    % get new filename
+    [filename, pathname, ~] = uiputfile({'*.png;*.eps;*.pdf', 'Image files (.png, .eps,.pdf)';...
+                                         '*.png', 'Portable Network Graphics (.png)';...
+                                         '*.eps', 'Encapsulated Postscript Vector Graphics (.eps)';...
+                                         '*.pdf', 'Color PDF file format (.pdf)'},...
+                                        'Save Image');
+ 
+     if isequal(filename,0) || isequal(pathname,0)
+        return;
+     end
+    
+    % save new figure
+    if (endswith(filename, '.pdf'))
+        screen2pdf(f_new, [pathname filename]);
+    elseif (endswith(filename, '.eps'))
+        screen2eps(f_new, [pathname filename]);
+    else 
+        screen2png(f_new, [pathname filename]);
     end
-
-    handles = gethand;
-    print(handles.figure1, '-dpng', '-noui', [pathname filename]);
-end
-% --------------------------------------------------------------------
+ end
+ 
+ % --------------------------------------------------------------------
 function CloseMenuItem_Callback(~, ~, handles)
 % hObject    handle to CloseMenuItem (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
@@ -567,7 +590,9 @@ function lstChannels_Callback(~, ~, ~)
     else
         plotBynSelected = plotTypes{6}; %cluster type
     end
-    set(handles.pupPlotType, 'String', plotBynSelected(:,1), 'Value', lastPlotTypeTable(nSelectedType));
+    
+    t = min(lastPlotTypeTable(nSelectedType), numel(plotBynSelected(:,1)));
+    set(handles.pupPlotType, 'String', plotBynSelected(:,1), 'Value', t);
 
     % -- clear regexps textfield
     set(handles.txtRegexps, 'String', '');
@@ -779,9 +804,15 @@ function plotChannels_Callback(~, ~, handles)
     set(0,'CurrentFigure', current_figure);
 end
 
+% in the past cyt checked for 'ctrl\cmd' so that the plot would open up in
+% a new figure. That check is notoriously buggy\sticky and after the user
+% has let go of ctrl the plot would annoyingly pop up in a new window. I am
+% removing this 'feature' since it is no longer needed now with the 'print
+% image' button. 
 function isCtrlPressed=isCtrlPressed
-    modifiers = get(gcf,'currentModifier'); 
-    isCtrlPressed = ~isempty(find(ismember({'command'; 'control'},modifiers)));
+    isCtrlPressed = false;
+%     modifiers = get(gcf,'currentModifier'); 
+%     isCtrlPressed = ~isempty(find(ismember({'command'; 'control'},modifiers)));
 end
 
 function hidePlotControls
@@ -2293,6 +2324,9 @@ function createMeta
             [meta_cluster_channel, ~] = phenograph(centroids, k_neigh,'distance',distance);
             metalable=['metaPhenoGraphK' num2str(k_neigh)];
         else
+            if (strcmp(distance,'euclidean'))
+                distance = 'sqeuclidean';
+            end
             [meta_cluster_channel, ~] = kmeans(centroids, k_neigh,'distance',distance);
             metalable=['metaKmeansK' num2str(k_neigh)];
         end
