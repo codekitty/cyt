@@ -1369,6 +1369,15 @@ function plot_cluster_tsne
         disp(getReport(e,'extended'));
         return;
     end
+    
+    %show density
+    [~, density, x, y] = kde2d(tSNE_out, 256);
+    zmin = min(real(double(density(:))));
+    zmax = max(real(double(density(:))));
+    levs = linspace(zmin, zmax, 16 + 2);
+    contour(x, y, density, levs(2:3:(end-1)), 'LineColor', [.7,.7,.7]);
+    hold on;
+
     %finding color channel
     color_chan = get(handles.lstTsneColorBy,'Value');        
     color_chan = color_chan-1;
@@ -1380,7 +1389,7 @@ function plot_cluster_tsne
     elseif color_chan ==0 % color by gate         
         tsne_col = cluster_mapping(:,3);
         scatter_by_point(tSNE_out(:,1), tSNE_out(:,2), tsne_col, (dot_size+31)); %plotting
-        legend(gate_names, 'Interpreter', 'none');
+        legend([{'Density'};gate_names], 'Interpreter', 'none');
     else
         if isDiscrete(color_chan) %color by cluster (or meta)
             data_col=session_data(gate_context, color_chan);
@@ -1415,7 +1424,7 @@ function plot_cluster_tsne
             else
                 groups = [repmat('Cluster ', length(unique(tsne_col)), 1), num2str(unique(tsne_col))];
             end
-            legend({groups},'Interpreter', 'none');%display legend 1
+            legend([{'Density'}; cellstr(groups)],'Interpreter', 'none');%display legend 1
 
         else
         
@@ -3206,11 +3215,16 @@ function hPlot=plotScatter
         set(h, 'String', '');
 
         if get(handles.chkDensity, 'Value')
-            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 32);
-            
+            [~, density, x, y] = kde2d(sessionData(gateContext, [nCH1 nCH2]), 64);
+                zmin = min(real(double(density(:))));
+
+                zmax = max(real(double(density(:))));
+                levs = linspace(zmin, zmax, 512 + 2);
+%                 contour(x, y, density, );
+
             
             hold on;
-            contour(x, y, density, 1024);
+            contour(x, y, density, levs(2:64:(end-1)));
             hold off;
         end
         if get(handles.chkLog, 'Value')
@@ -4287,7 +4301,7 @@ function cmiTransformGate_Callback(~, ~, ~)
 
         % DNA gate
         if (isDnagate)
-            debris_threshold = 0.9
+            debris_threshold = 0.95;
 
             chDNA = cellstrfnd(gates{i, 3}, 'DNA');
             DNA = gateData(:, chDNA);
@@ -4670,7 +4684,8 @@ function cmiSubsample_Callback(isSubsampleEach)
         channel_names = retr('channelNames');
         
         for i=selected_gates
-            rand_sample = randsample(intersect(gates{i, 2}, gateContext), sample_size);
+            gateInds = intersect(gates{i, 2}, gateContext);
+            rand_sample = randsample(gateInds, min(sample_size, length(gateInds)));
             gate_channel_names = gates{i, 3};
             if numel(channel_names) > numel(gate_channel_names)
                 gate_channel_names = channel_names;
@@ -4681,7 +4696,7 @@ function cmiSubsample_Callback(isSubsampleEach)
 %             set(handles.lstIntGates, 'String', gates(:, 1));
         end
     else 
-        rand_sample = randsample(gateContext, sample_size);
+        rand_sample = randsample(gateContext, min(sample_size, length(gateContext)));
         createNewGate(rand_sample, retr('channelNames'));
 
         gates = retr('gates');
@@ -5710,7 +5725,9 @@ function compareMaps
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
 
-    map_compareGUI('session_data',session_data(gate_context,:),'channelNames',channel_names)
+    map_compareGUI('session_data',...
+                    session_data(randsample(gate_context, min(6000, length(gate_context))),:),...
+                    'channelNames',channel_names)
 end
 
 % ------------

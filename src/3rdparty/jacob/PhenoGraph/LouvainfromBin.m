@@ -7,14 +7,14 @@ ps = [curr_path 'Louvain' filesep];
 filename = strrep( filename, '.bin', '' );
 % begin
 fprintf(1, 'MATLAB: calling convert:\n');
-command = [ps '/convert -i ' filename '.bin -o ' filename '_graph.bin -w ' filename '_graph.weights' ];
+command = [ps 'convert -i ' filename '.bin -o ' filename '_graph.bin -w ' filename '_graph.weights' ];
 fprintf(1,'%s\n', command );
 system( command );
 % run community detection
 for iter = 1:numiters
     
     fprintf(1,'MATLAB: running community detection, ITERATION %i\n', iter );
-    command = [ps '/community ' filename '_graph.bin -l -1 -v -w ' filename '_graph.weights > ' filename '.tree'];
+    command = [ps 'community ' filename '_graph.bin -l -1 -v -w ' filename '_graph.weights > ' filename '.tree'];
     fprintf( 1, '%s\n', command );
     [~,r] = system( command );
     fprintf(1, '\n');
@@ -29,7 +29,7 @@ for iter = 1:numiters
 
     
     % find number of lvevls
-    command = [ps '/hierarchy ' filename '.tree' ];
+    command = [ps 'hierarchy ' filename '.tree' ];
     fprintf(1, '%s\n', command );
     [~,r] = system( command );
     fprintf(1, '\n' );
@@ -43,7 +43,7 @@ for iter = 1:numiters
     % import levels
     for level = 1:num_levels
         fprintf( 1, 'MATLAB: importing level %d\n', level );
-        command = [ps '/hierarchy ' filename '.tree -l ' num2str( level ) ' > ' filename '.tmp' ];
+        command = [ps 'hierarchy ' filename '.tree -l ' num2str( level ) ' > ' filename '.tmp' ];
         fprintf(1, '%s\n', command );
         system( command );
         hierarchy_output = load( [filename '.tmp'] );
