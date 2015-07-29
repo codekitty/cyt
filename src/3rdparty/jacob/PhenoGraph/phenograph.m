@@ -109,7 +109,7 @@ else % c is a single unsorted labels vector
     c = sortlabs( c, cutoff );
     
 end
-
+end
 function sl = sortlabs( labs, cutoff )
 
 i = 1;
@@ -121,4 +121,5 @@ ix(remove) = [];
 for assignment = ix
     sl( labs == assignment ) = i;
     i = i+1;
+end
 end
