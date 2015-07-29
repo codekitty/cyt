@@ -60,18 +60,33 @@ if any(isinf(nonzeros(G)))
     error('Graph contains infinite weights. Check your data for identical points');
 end
 
-% Write graph to file
-Graph2Binary(G,'G')
+work_dir = pwd;
 
-% Run Louvain on file for multiple iterations
-niter = 20;
-[c,Q,labels,communities] = LouvainfromBin('G.bin',niter);
+[curr_path, ~, ~] = fileparts(mfilename('fullpath'));
+curr_path = [curr_path filesep];
 
-llim = max([ceil(length(labels)./1e4) 1]);
-labels = sortlabels(labels,llim);
+cd(curr_path);
 
-%generate unique id 
-uniqueID = genarateID;
+try 
+    % Write graph to file
+    Graph2Binary(G,'G')
+
+    % Run Louvain on file for multiple iterations
+    niter = 20;
+    [c,Q,labels,communities] = LouvainfromBin('G.bin',niter);
+
+    llim = max([ceil(length(labels)./1e4) 1]);
+    labels = sortlabels(labels,llim);
+
+    %generate unique id 
+    uniqueID = genarateID;
+        
+    cd(work_dir);
+catch ME
+    cd(work_dir);
+    rethrow(ME);
+end
+end
 
 function c = sortlabels( c, cutoff )
 % c = sortlabels( c, cutoff )

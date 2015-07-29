@@ -5668,9 +5668,9 @@ function phenoEach
             distance = 'mahalanobis';     
     end
 
-    allClusters=[];   
-    gate_context=[];   
     if mehtod==1 % phenograph each gate separately 
+        allClusters=[];   
+        gate_context=[]; 
         hWaitbar = waitbar(0,'Computing PhenoGraph for each gate separately ...');
 
         uniqueID={};
@@ -5715,6 +5715,7 @@ function phenoEach
         lstGates_Callback;       
         return;  
     else  % phenograph all gates together 
+        gate_context  = retr('gateContext'); % indices currently selected
         hWaitbar = waitbar(0,sprintf('Computing PhenoGraph (%g points) ...', numel(gate_context)));
         data = session_data(gate_context, selected_channels);
 
