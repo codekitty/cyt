@@ -572,17 +572,6 @@ function lstGates_Callback(~, ~, ~)
     end
     
     [gate_indices, channel_names] = getSelectedIndices(selected_gates);
-
-    % filter indices if user selected to intersect gates
-    if get(handles.btnIntersect, 'Value')
-        [gate_int_indices channel_int_names] = getSelectedIndices(selected_int_gates);
-        if (~isempty(gate_int_indices))
-            gate_indices = intersect(gate_int_indices, gate_indices);
-            if (numel(channel_int_names) > numel(channel_names))
-                channel_names = channel_int_names;
-            end
-        end    
-    end    
             
     % save new channel names
     put('channelNames', channel_names);
@@ -667,12 +656,6 @@ function intIndices=getIntIndices
     handles = gethand;
     gates = retr('gates');
     intIndices = [];
-    if (get(handles.btnIntersect, 'Value'))
-        selIntGates = get(handles.lstIntGates, 'Value');
-        for i=selIntGates
-            intIndices = union(intIndices, gates{i, 2});
-        end
-    end
 end
 % --- Executes on button press in btnAddFCS.
 function btnAddFCS_Callback(~, ~, ~)
@@ -2362,15 +2345,7 @@ function hPlot=plotScatter
             basal_gate = gates{selected_gates(1), 2};
             drug_gate  = gates{selected_gates(2), 2};
             
-            % filter indices if user selected to intersect gates
-            if get(handles.btnIntersect, 'Value')
-                [inds, ~] = getSelectedIndices(get(handles.lstIntGates, 'Value'));
-                if (~isempty(inds))
-                    basal_gate = intersect(inds, basal_gate);
-                    drug_gate  = intersect(inds, basal_gate);
-                end
-            end
-            
+
             vX = sessionData(basal_gate, nCH1);
             vY = sessionData(basal_gate, nCH2);
             vZ = sessionData(basal_gate, nChColor);
@@ -2567,12 +2542,7 @@ function plot_KNN_diff(color_ch)
     [basal_gate ~] = getSelectedIndices(selected_gates(1));
     [stim_gate ~] = getSelectedIndices(selected_gates(2));
     
-    if get(handles.btnIntersect, 'Value')
-        intInds = getIntIndices;
-        basal_gate = intersect(basal_gate, intInds);
-        stim_gate = intersect(stim_gate, intInds);
-    end
-    
+     
     % get knn space channels
     knn_space = get(handles.lstKNNSpace, 'Value');
     
@@ -2948,19 +2918,7 @@ function addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
             selected_gates = 1:size(gates, 1);
         end
         
-        % filter indices if user selected to intersect gates
-        if get(handles.btnIntersect, 'Value')
-            selected_int_gates = get(handles.lstIntGates, 'Value');
-            [gate_indices channel_names] = getSelectedIndices(selected_gates);
-            [gate_int_indices channel_int_names] = getSelectedIndices(selected_int_gates);
-            % check if one group is contained in the other
-            if isempty(setdiff(gate_int_indices, gate_indices))
-                selected_gates = selected_int_gates;
-            else
-                msgbox('Your are using intersect mode so SightOf does not know which gates to add the resulting channels to. By default, when the intersecting group is not contained in the main selected gates group, the channels are added to all the main selected gates. ','Channels added to selected gates though content is only added to the intersection.','warn');
-            end
-        end    
-
+ 
     end
     
     % add necessary channels to the selected gates
@@ -3215,37 +3173,6 @@ function pupMarkerSize_Callback(hObject, ~, ~)
     set(0,'DefaultLineMarkerSize',marker_size);
     put('markerSize', marker_size);
     plotChannels_Callback(0, 0, handles);
-end
-
-% --- Executes on button press in btnIntersect.
-function btnIntersect_Callback(hObject, ~, ~)
-    
-    if get(hObject,'Value')
-    	% Toggle button is pressed-take appropriate action
-        set(hObject, 'cdata', brighten(double(get(hObject, 'cdata')), double(-0.5)));
-        
-        handles = gethand;
-        
-        pos = get(handles.lstGates, 'Position');
-        pos(4) = pos(4)/2;
-        pos(2) = pos(2) + pos(4);
-        set(handles.lstGates, 'Position', pos);
-  
-        set(handles.lstIntGates, 'Visible', 'on');
-    else
-    	% Toggle button is not pressed-take appropriate action
-        set(hObject, 'cdata', brighten(double(get(hObject, 'cdata')), double(double(0.5))));
-
-        handles = gethand;
-        pos = get(handles.lstGates, 'Position');
-        pos(2) = pos(2) - pos(4);
-        pos(4) = pos(4)*2;
-        set(handles.lstGates, 'Position', pos);
-  
-        set(handles.lstIntGates, 'Visible', 'off');
-    end
-    
-    lstGates_Callback;
 end
 
 function refreshGates
@@ -4129,8 +4056,16 @@ function btnSplitCellCycle_CreateFcn(hObject, ~, ~)
     placeIcon(hObject, 'cycle.png');
 end
 
+function btnGatesAction_CreateFcn(hObject, ~, ~)
+    placeIcon(hObject, 'contextmenu.png');
+end
+
+function btnChannelsAction_CreateFcn(hObject, ~, ~)
+    placeIcon(hObject, 'contextmenu.png');
+end
+
 function btnIntersect_CreateFcn(hObject, ~, ~)
-    placeIcon(hObject, 'intersect.png');
+    placeIcon(hObject, 'contextmenu.png');
 end
 
 % --- Executes during object creation, after setting all properties.
