@@ -487,28 +487,41 @@ function channel_names=get_channelnames_from_header(fcshdr)
 	end
 end
 
+
 % --------------------------------------------------------------------
 function PrintMenuItem_Callback
-    [filename, pathname, ~] = uiputfile({'*.png;*.pdf', 'Image files (.png, .pdf)';...
+    % copy figure
+    ha = gca;
+    ha.Parent
+    map = colormap;
+
+    f_new = figure;
+    movegui(f_new,'northwest'); 
+    copyobj(ha.Parent.Children, f_new);
+    colormap(map);
+    drawnow;
+    
+    % get new filename
+    [filename, pathname, ~] = uiputfile({'*.png;*.eps;*.pdf', 'Image files (.png, .eps,.pdf)';...
                                          '*.png', 'Portable Network Graphics (.png)';...
+                                         '*.eps', 'Encapsulated Postscript Vector Graphics (.eps)';...
                                          '*.pdf', 'Color PDF file format (.pdf)'},...
                                         'Save Image');
-
-    if isequal(filename,0) || isequal(pathname,0)
-    return;
-    end
-    
-    ha = gca;
-    f_new = figure;
-    copyobj(ha, f_new);
+ 
+     if isequal(filename,0) || isequal(pathname,0)
+        return;
+     end
     
     % save new figure
     if (endswith(filename, '.pdf'))
         screen2eps(f_new, [pathname filename]);
-    else
+    elseif (endswith(filename, '.eps'))
+        screen2eps(f_new, [pathname filename]);
+    else 
         screen2png(f_new, [pathname filename]);
     end
-end
+ end
+
 % --------------------------------------------------------------------
 function CloseMenuItem_Callback(~, ~, handles)
 % hObject    handle to CloseMenuItem (see GCBO)
@@ -714,8 +727,8 @@ function plotChannels_Callback(~, ~, handles)
 end
 
 function isCtrlPressed=isCtrlPressed
-    modifiers = get(gcf,'currentModifier'); 
-    isCtrlPressed = ~isempty(find(ismember({'command'; 'control'},modifiers)));
+%     modifiers = get(gcf,'currentModifier'); 
+    isCtrlPressed = false; %~isempty(find(ismember({'command'; 'control'},modifiers)));
 end
 
 function hidePlotControls
@@ -3606,6 +3619,19 @@ end
 
 % --------------------------------------------------------------------
 function cmnGates_Callback(hObject, eventdata, handles)
+end
+function cmActions_Callback
+    try
+        handles = gethand;
+        state = 'off';
+        selected_channel = get(handles.lstChannels, 'Value');
+        if (numel(selected_channel)==1)
+            state = 'on';
+        end
+
+        set(handles.cmSplitToGates, 'Enable', state);
+    catch ex
+    end
 end
 
 % --------------------------------------------------------------------
