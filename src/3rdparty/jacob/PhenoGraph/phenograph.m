@@ -17,6 +17,9 @@
 % -----------------------------------------------------------------------
 function [labels,communities,G,uniqueID] = phenograph( data, k, varargin )
 
+fprintf(1,'Starting Phenograph on %i points in %i dimensions...\n',...
+        size(data,1), size(data,2));
+    
 distance = 'euclidean';
 graphtype = 'jaccard';
 if nargin >2
@@ -68,8 +71,10 @@ curr_path = [curr_path filesep];
 cd(curr_path);
 
 try 
+    fprintf(1, 'Writing graph G...\n');
+    
     % Write graph to file
-    Graph2Binary(G,'G')
+    Graph2Binary(G,'G');
 
     % Run Louvain on file for multiple iterations
     niter = 20;

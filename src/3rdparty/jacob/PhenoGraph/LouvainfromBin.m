@@ -5,11 +5,28 @@ curr_path = [curr_path filesep];
 ps = [curr_path 'Louvain' filesep];
 
 filename = strrep( filename, '.bin', '' );
+
+% sanity check that graph file exists
+if ~exist([filename '.bin'], 'file')
+	% Error File does not exist.
+    fprintf(1, 'Error: file does not exist:\n%s.bin\n', filename);
+end
+
 % begin
 fprintf(1, 'MATLAB: calling convert:\n');
 command = [ps 'convert -i ' filename '.bin -o ' filename '_graph.bin -w ' filename '_graph.weights' ];
 fprintf(1,'%s\n', command );
 system( command );
+
+% sanity check that converted graph was written
+if ~exist([filename '_graph.bin'], 'file') 
+	% Error File does not exists.
+    fprintf(1, 'Error: file does not exist:\n%s_graph.bin\n', filename);
+elseif ~exist([filename '_graph.weights'], 'file')
+	% Error File does not exists.
+    fprintf(1, 'Error: file does not exist:\n%s_graph.weights\n', filename);
+end
+
 % run community detection
 for iter = 1:numiters
     

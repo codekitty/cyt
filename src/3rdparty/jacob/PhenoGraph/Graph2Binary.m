@@ -3,7 +3,7 @@ function Graph2Binary( G, filename )
 	 % Write to binary file
     G = tril(G);
     t = tic;
-    fprintf(1,'Writing graph to .bin file\n');
+    fprintf(1,'Writing graph to %s.bin file\n',filename);
     textname = [filename '.bin'];
     out = fopen( textname, 'w+' );
     f = find( G > 0 );
