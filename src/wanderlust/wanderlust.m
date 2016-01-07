@@ -78,44 +78,17 @@ G.Opts.cell_clusters = [];
 G.Opts.end_clusters = [];
 G.Opts.plot_debug_branch = true;
 
-rng('shuffle');
-
+% read parameters can this loop be replaces by G.Opts = Options?
 fn = fieldnames(Options);
 for j=1:length(fn)
-    name = fn{j};
-    
+    name = fn{j};    
     G.Opts.(deblank(name)) = Options.(deblank(name));
-    
-%     value = getfield(Options, name);
-%     if     strcmpi(name,'metric'),          G.Opts.metric = value;
-%     elseif strcmpi(name,'k'),               G.Opts.k = value;
-%     elseif strcmpi(name,'l'),               G.Opts.l = value;
-%     elseif strcmpi(name,'num_graphs'),      G.Opts.num_graphs = value;
-%     elseif strcmpi(name,'s'),               G.Opts.s = value;
-%     elseif strcmpi(name,'num_landmarks'),   G.Opts.num_landmarks = value;
-%     elseif strcmpi(name,'verbose'),         G.Opts.verbose = value;
-%     elseif strcmpi(name,'branch'),          G.Opts.branch = value;
-%     elseif strcmpi(name,'partial_order'),  	G.Opts.partial_order = value;
-%     elseif strcmpi(name,'deblur'),          G.Opts.deblur = value;
-%     elseif strcmpi(name,'snn'),             G.Opts.snn = value;
-%     elseif strcmpi(name,'ann'),             G.Opts.ann = value; %not supported yet
-%     elseif strcmpi(name,'voting_scheme'),   G.Opts.voting_scheme = value; 
-%     elseif strcmpi(name,'band_sample'),     G.Opts.band_sample = value; 
-%     elseif strcmpi(name,'flock_landmarks'), G.Opts.flock_landmarks = value; 
-%     elseif strcmpi(name,'plot_landmark_paths'), G.Opts.plot_landmark_paths = value; 
-%     elseif strcmpi(name,'plot_data'),       G.Opts.plot_data = value; 
-%     elseif strcmpi(name,'lnn'),             G.Opts.lnn = value; 
-%     elseif strcmpi(name,'landmarks'),       G.Opts.landmarks = value; 
-%     elseif strcmpi(name,'disallow'),        G.Opts.disallow = value; 
-%     elseif strcmpi(name,'search_connected_components'), G.Opts.search_connected_components = value;
-%     elseif strcmpi(name,'cell_clusters'),   G.Opts.cell_clusters = value;
-%     elseif strcmpi(name,'end_clusters'),    G.Opts.end_clusters = value;
-%     else   fprintf('Wanderlust.m: invalid option "%s" ignored.\n', name);
-%     end
 end
 
+rng('shuffle');
 G.Opts.plot_debug_branch = false;
 
+% print options
 G.Opts
 
 % Build lNN graph
@@ -124,82 +97,22 @@ if issparse( data )
         disp 'using prebuilt lNN graph';
     end
     lnn = data;
+elseif ~isempty(G.Opts.lnn)
+    if G.Opts.verbose 
+        disp 'using prebuilt lNN graph';
+    end
+    lnn = G.Opts.lnn;
 else
     if G.Opts.verbose 
         disp 'building lNN graph';
+        tic;
     end
-
-    tic;
-    if false % tmp todo compute using the diffusion map code
-        GraphDiffOpts = struct( ...
-            'Normalization','smarkov', ...
-            'Distance',G.Opts.metric, ...
-            'Epsilon',1, ...
-            'kNN', G.Opts.l, ...
-            'kNNAutotune', 10, ... %'kEigenVecs', 6, ...
-            'Symmetrization', 'W+Wt', ...
-            'DontReturnDistInfo', 1 );
-
-        GD = GraphDiffusion(data', 0, GraphDiffOpts);  
-        lnn= GD.T;
-    else
-        
-        if (isempty(G.Opts.lnn))
-
-            % hash map for data+metric+l -> lnn
-            hashMat = DataHash(data); 
-            hashVal = DataHash(string2hash([G.Opts.metric hashMat]) + G.Opts.l);
-
-            % Check for cached
-            [curr_path, ~, ~] = fileparts(mfilename('fullpath'));
-            curr_path = [curr_path filesep];
-            cachefilename = [curr_path 'cacheknnResults.mat'];
-
-            %checking for old lnn results for the same data
-            fileCheck = exist (cachefilename, 'file');
-
-            % if no file
-            if (fileCheck==0) 
-                % create new hash map
-                mapMat = containers.Map(); 
-            else
-                % loading the old lnn results
-                file= load(cachefilename); 
-                mapMat=file.mapMat;
-            end
-
-            % check for key in the hash map
-            check = isKey(mapMat,hashVal); 
-
-            % if lnn found in cache
-            if (check==1) 
-                % no need to run lnn again->returning old result
-                value=values(mapMat,{hashVal});
-                lnn=value{1};
-                fprintf('lnn loaded from cache: %gs\n', toc);
-            else
-                lnn = parfor_spdists_knngraph( data, G.Opts.l,...
-                    'distance', G.Opts.metric,...
-                    'chunk_size', 1000,... % TODO: parameterize and add opt for ppl without PC toolbox
-                    'verbose', G.Opts.verbose );
-                fprintf('lnn computed: %gs\n', toc);
-                
-                % while the hash map is too big removing the first element
-                while length(mapMat)>5 
-                    lstKeys= keys(mapMat); 
-                    remove(mapMat,lstKeys(1));
-                end
-
-                % adding the name and lnn result to hashmap
-                mapMat(hashVal)=lnn; 
-
-                % saving into file
-                save(cachefilename,'mapMat');
-            end
-        else
-            lnn = G.Opts.lnn;
-        end
-    end
+    
+    lnn = parfor_spdists_knngraph( data, G.Opts.l,...
+        'distance', G.Opts.metric,...
+        'chunk_size', 1000,... % TODO: parameterize and add opt for ppl without PC toolbox
+        'verbose', G.Opts.verbose );
+    if G.Opts.verbose, fprintf('lnn computed: %gs\n', toc); end
     
     if (G.Opts.deblur)
         [i, j, s] = find(lnn);
@@ -207,11 +120,14 @@ else
         for ith=1:numel(i)
             data(ith, :) = median(data(j(i==ith), :)); 
         end
-        tic;
-    	lnn = parfor_spdists_knngraph( data, l, 'distance', metric, 'chunk_size', 1000, 'SNN', true, 'verbose', true );
-        sprintf('lnn re-computed after deblur: %gs', toc);
+        if G.Opts.verbose, fprintf('re-computing lnn after data median filter\n'); tic; end
+    	
+        lnn = parfor_spdists_knngraph( data, l, 'distance', metric, 'chunk_size', 1000, 'SNN', true, 'verbose', true);
+        
+        if G.Opts.verbose, fprintf('lnn re-computed after data median filter: %gs\n', toc); end
     end
 
+    % option to remove edges to specific points? don't remember anymore
     if ~isempty(G.Opts.disallow)
 
         [j, i, s] = find(lnn);
@@ -248,10 +164,12 @@ else
         j(rem) = [];
         s(rem) = [];
         lnn = sparse(j, i, s);
-
     end
     
+    % Shared Nearest Neighbor
     if (G.Opts.snn~=0)
+        if (G.Opts.verbose), fprintf('updating using jaccard\n'); tic; end
+
         [j, i, s] = find(lnn);
         % observational note: i is sorted with l-1 apearences each index
         % use this irreliable observation to make sn faster
@@ -287,7 +205,6 @@ else
                 end
             end
         end
-        sprintf('shared nearest neighbors computed: %gs', toc);
 
         rem = cell2mat(rem);
 
@@ -296,6 +213,8 @@ else
         j(rem) = [];
         s(rem) = [];
         lnn = sparse(j, i, s);
+    
+        if G.Opts.verbose, fprintf('jaccard computed: %gs\n', toc); end
     end
 end
 
@@ -448,7 +367,7 @@ for graph_iter = 1:G.Opts.num_graphs
         % Recalculate branches post reassignments
 %         [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, : ), data, iter_l, ...
 %             dist,paths_l2l, G.Opts);
-bp=0;
+        bp=0;
         G.B(graph_iter, :) = RNK;
         G.diffdists = diffdists;
         G.bp(graph_iter) = bp;
