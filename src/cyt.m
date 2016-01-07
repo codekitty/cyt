@@ -174,7 +174,7 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
     
     % set defaults
     set(0,'DefaultTextInterpreter','None');
-    
+    set(0,'DefaultAxesFontSize',16) 
 end
 
 function put(name, what)
@@ -220,6 +220,7 @@ function save_session
 sessionData = retr('sessionData');
 gates = retr('gates');
 regexps = retr('regexps');
+auxInfos = retr('auxInfos');
 if (isempty(sessionData)) 
     uiwait(msgbox('The session is empty.','Nothing to save','modal'));
     return;
@@ -231,7 +232,7 @@ if isequal(filename,0) || isequal(pathname,0)
     return;
 end
 
-save([pathname filename], 'sessionData', 'gates', 'regexps'); 
+save([pathname filename], 'sessionData', 'gates', 'regexps', 'auxInfos'); 
 %save([pathname filename], 'sessionData', 'gates', 'regexps', '-v7.3'); %alternative for data > 2GB
 
 end
@@ -285,6 +286,12 @@ if exist('regexps', 'var')
             set(handles.lstRegexps, 'String', old_regexps(:, 1));
         end
     end
+end
+
+if exist('auxInfos', 'var')
+	put('auxInfos', auxInfos);  
+else
+	put('auxInfos', {});  
 end
 
 % make sure axis popups are visible and filled out
@@ -392,7 +399,7 @@ function OpenMenuItem_Callback(~, ~, ~)
             gates{i, 4} = files{i}; % opt cell column to hold filename
         end
         
-    else% assume files are fcs format (the only officialy supported format
+    else % assume files are fcs format (the only officialy supported format)
         
         tic
         [fcsdats fcshdrs]=cellfun(@fca_readfcs, files, 'UniformOutput', false);
@@ -481,7 +488,7 @@ function OpenMenuItem_Callback(~, ~, ~)
     close(hWaitbar);
 end
 
-%Due to diffrent names
+% Due to diffrent names
 function channel_names=oldget_channelnames_from_header(fcshdr)
     channel_names = {fcshdr.par.name2};
 	if isempty(channel_names{1})
@@ -493,7 +500,7 @@ end
 function channel_names=get_channelnames_from_header(fcshdr)
     channel_names1 = {fcshdr.par.name};
     channel_names2 = {fcshdr.par.name2};
-	if (strcmp(channel_names1,channel_names2)==0)
+	if false %(strcmp(channel_names1,channel_names2)==0)
         channel_names = combineNames(channel_names1,channel_names2);
     else
         channel_names=channel_names2;
@@ -897,7 +904,7 @@ function plot_histograms(by_gates)
     dplot(1:100, 'colors', ColorMtx);
     legend_space = 0;
 
-    % plot legend
+    %?plot legend
     if (by_gates)
 
         legend_space = 1; % flag to present a legend
@@ -987,6 +994,8 @@ function plot_histograms(by_gates)
         i = i+1;
         if (by_gates)
             if ~isempty(subpop_selection) 
+%                 nhist(referenceData(:, channel), 'smooth', 'proportion');
+%                 nhist(subpopData(:, channel), 'smooth', 'proportion');
                 dplot(referenceData(:, channel),'colors',ColorMtx);
                 dplot(subpopData(:, channel),'colors',ColorMtx);
             else
@@ -995,7 +1004,8 @@ function plot_histograms(by_gates)
                     if ~isempty(intIndices)
                         currGate = intersect(intIndices, currGate);
                     end
-                    dplot(sessionData(currGate, channel),'colors',ColorMtx);
+                    nhist(sessionData(currGate, channel), 'smooth', 'proportion');
+%                     dplot(sessionData(currGate, channel),'colors',ColorMtx);
                 end
             end
         else
@@ -1005,9 +1015,12 @@ function plot_histograms(by_gates)
         set(gca,'ytick',[]);
         set(gca,'yticklabel',{});
         if exist('dists', 'var')
-            title(sprintf('%s\ndiff: %g', channelNames{channel}, dists(find(channel==selectedChannels))));
+            ht=title(sprintf('%s\ndiff: %g', channelNames{channel}, dists(find(channel==selectedChannels))));
         else
-            title(channelNames(channel));
+            ht=title(channelNames{channel});
+        end
+        if (numel(channelNames{channel}) > 20)
+            ht.FontSize = 8;
         end
     end
 
@@ -1060,9 +1073,7 @@ function plot_along_time(time_channel)
     % ==== TODO === ask by gate or by channels
     by_gate = false;
     
-   
-    
-    arrWonderlust = session_data(gate_context, time_channel);
+    arrWanderlust = session_data(gate_context, time_channel);
     matData       = session_data(gate_context, selected_channels);
     
     smoothness_factor   = str2num(get(handles.txtWindowSize, 'String'));
@@ -1076,6 +1087,15 @@ function plot_along_time(time_channel)
     avg_type            = avg_types{get(handles.pupAvgType, 'Value')};
     
     if by_gate
+        selected_channels = selected_channels(1);
+        
+        biggest_gate = maxind(cellfun(@numel, gates(selected_gates,2)));
+        matData = zeros(numel(gates{selected_gates(biggest_gate), 2}), numel(selected_gates));
+        for i=1:numel(selected_gates)
+            matData(1:numel(gates{selected_gates(i), 2}),i) = ...
+                session_data(gates{selected_gates(i), 2}, selected_channels);
+        end
+        
         % generate gate source vector for grouping
         for j=selected_gates
             v(ismember(gate_context,gates{j, 2})) = j;
@@ -1090,11 +1110,15 @@ function plot_along_time(time_channel)
 
     if normalizeX
         % display wonderlust results
-        arrWonderlust = arrWonderlust-min(arrWonderlust);
-        arrWonderlust = arrWonderlust./max(arrWonderlust);
+        arrWanderlust = arrWanderlust-min(arrWanderlust);
+         arrWanderlust = arrWanderlust./prctile(arrWanderlust, 97);
+%         arrWanderlust = arrWanderlust./max(arrWanderlust);
+        arrWanderlust(arrWanderlust>1) = 1;
+%         arrWonderlust = 1-arrWonderlust;
     end
-    
-    plot_as_function(arrWonderlust, matData, ...
+    branch = any(strfind(channel_names{time_channel+1}, 'branch'));
+    if (branch)
+    plot_as_function(arrWanderlust, matData, ...
                     'num_locs', 100,...
                     'avg_type', avg_type,...
                     'show_error', show_error,...
@@ -1102,15 +1126,27 @@ function plot_along_time(time_channel)
                     'normalize', normalizeY,...
                     'rank', rankY,...
                     'svGolay', svGolay,...
-                    'smooth', smoothness_factor);
-    xlabel(channel_names{time_channel}); 
-    if (numel(selected_channels) ==1)
-        ylabel(channel_names{selected_channels(1)});
-        [mi, ~, ~, ~] = compute_dremi([arrWonderlust matData], .9);
-        title(sprintf('MI: %g', mi));
+                    'smooth', smoothness_factor,...
+                    'branchY', session_data(gate_context, time_channel+2));
+    else
+    plot_as_function(1:size(matData,1), matData, ...
+                    'num_locs', 100,...
+                    'avg_type', avg_type,...
+                    'show_error', show_error,...
+                    'labels', gate_names ,...
+                    'normalize', normalizeY,...
+                    'rank', rankY,...
+                    'svGolay', svGolay,...
+                    'smooth', smoothness_factor);%,...
     end
+%     if (numel(selected_channels) ==1)
+%         ylabel(channel_names{selected_channels(1)});
+%         [mi, ~, ~, ~] = compute_dremi([arrWonderlust matData], .9);
+%         
+% %         title(sprintf('MI: %g', mi));
+%     end
 %     legend(legend_labels);
-
+    xlabel(channel_names{time_channel}); 
     if (by_gate)
         title(channel_names(selected_channels(1)), 'Interpreter', 'none');
     end
@@ -1386,7 +1422,7 @@ function plot_cluster_tsne
     try
         % Compute tSNE map over centroids
         if (size(centroids, 1) > 10)
-            tSNE_out = fast_tsne(centroids, [], 5);    %running tSNE on centroids
+            tSNE_out = fast_tsne(centroids);    %running tSNE on centroids
         else
             tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
         end
@@ -1806,7 +1842,7 @@ function plot_sample_clusters(cluster_channel)
             for i=1:length(clusters_in_sample)
                 marker_means(i,:) = mean(data(session_data(gate_context, cluster_channel)==clusters_in_sample(i),:),1);
             end
-            marker_means = mynormalize(marker_means, 100);
+            marker_means = mynormalize(marker_means, 'percentile', 100);
 
             %find percentage of cells belonging to each cluster
             cells_pr_cluster = countmember(unique(session_data(gate_context, cluster_channel)),session_data(gate_context,cluster_channel))/length(gate_context);
@@ -1821,7 +1857,7 @@ function plot_sample_clusters(cluster_channel)
             for i=1:numel(selected_gates)
                 marker_means(i,:) = mean(session_data(gates{selected_gates(i),2},selected_channels),1);
             end
-            marker_means = mynormalize(marker_means, 100);
+            marker_means = mynormalize(marker_means, 'percentile', 100);
 
             %find percentage of cells belonging to each cluster
             cells_pr_cluster = cellfun(@(v)length(v), gates(selected_gates, 2))/length(gate_context);
@@ -2839,6 +2875,7 @@ function hPlot = plotDensity
     vx = session_data(gate_context, selected_channels(1));
     vy = session_data(gate_context, selected_channels(2));
 
+    
     my_plot_dens(vx, vy,0);
            
 	xlabel(channel_names{selected_channels(1)}, 'Interpreter', 'none')
@@ -2970,8 +3007,9 @@ function hPlot=plotScatter
     ncols = ceil(nplots/nrows);
     
     for i=1:nplots
-        nChColor = nChColors(i);
-        subplot(nrows, ncols, i);
+    
+    nChColor = nChColors(i);
+    subplot(nrows, ncols, i);
         
     % color by gate
     if (nChColor == 0)
@@ -3011,7 +3049,7 @@ function hPlot=plotScatter
             clr = jet(numel(selected_gates));
         else
             clr = distinguishable_colors(numel(selected_gates));
-%             clr(2, :) = []; % remove red
+%             clr(1:2, :) = .8; % remove red
         end
         
             vColor_discrete = vColor;
@@ -3115,109 +3153,8 @@ function hPlot=plotScatter
             end            
         % color the difference of a channel between two gates
         else  
-            basal_gate = gates{selected_gates(1), 2};
-            drug_gate  = gates{selected_gates(2), 2};
-            
-            % filter indices if user selected to intersect gates
-            if get(handles.btnIntersect, 'Value')
-                [inds, ~] = getSelectedIndices(get(handles.lstIntGates, 'Value'));
-                if (~isempty(inds))
-                    basal_gate = intersect(inds, basal_gate);
-                    drug_gate  = intersect(inds, basal_gate);
-                end
-            end
-            
-            vX = sessionData(basal_gate, nCH1);
-            vY = sessionData(basal_gate, nCH2);
-            vZ = sessionData(basal_gate, nChColor);
-
-            vA = sessionData(drug_gate, nCH1);
-            vB = sessionData(drug_gate, nCH2);
-            vC = sessionData(drug_gate, nChColor);
-
-
-            if get(handles.rdbDiffBox, 'Value')
-                thresh_val = get(handles.sldrThreshold, 'Value');
-                box_size_val = get(handles.sldrBox, 'Value');
-                thresh = round(thresh_val);
-                nbins = round(30-(box_size_val*2));
-
-                selected_ind = union(basal_gate, drug_gate);
-                XandA = sessionData(selected_ind, nCH1);
-                YandB = sessionData(selected_ind, nCH2);
-
-                %# bin centers (integers)
-                xbins = linspace(floor(min(XandA)),ceil(max(XandA)),nbins);
-                ybins = linspace(floor(min(YandB)),ceil(max(YandB)),nbins);
-                xNumBins = numel(xbins); yNumBins = numel(ybins);
-
-                %# map X/Y values to bin indices
-                Xi = round( interp1(xbins, 1:xNumBins, vX, 'linear', 'extrap') );
-                Yi = round( interp1(ybins, 1:yNumBins, vY, 'linear', 'extrap') );
-
-                %# count number of elements in each bin
-                numPtsXY = accumarray([Yi(:) Xi(:)], 1, [yNumBins xNumBins]);
-                sumXY = accumarray([Yi(:) Xi(:)], vZ, [yNumBins xNumBins]);
-
-                % TODO take care of thresh
-                XY = sumXY./numPtsXY;
-    %             XY(find(numPtsXY<thresh)) = 0;
-
-                %# map A/B values to bin indices
-                Ai = round( interp1(xbins, 1:xNumBins, vA, 'linear', 'extrap') );
-                Bi = round( interp1(ybins, 1:yNumBins, vB, 'linear', 'extrap') );
-
-                %# count number of elements in each bin
-                numPtsAB = accumarray([Bi(:) Ai(:)], 1, [yNumBins xNumBins]);
-                sumAB = accumarray([Bi(:) Ai(:)], vC, [yNumBins xNumBins]);
-
-                % TODO take care of thresh
-                AB = sumAB./numPtsAB;
-
-                diff = AB-XY;
-                diff(find(numPtsAB<thresh)) = NaN;
-                diff(find(numPtsXY<thresh)) = NaN;
-                    
-                %# plot 2D histogram
-                nanimagesc(diff, genColorMap('rwb', 20), 'zeroc', 1, 'xbins', xbins, 'ybins', ybins);
-                colorbar; set(gca,'YDir','normal'); hold off;
-%                 hold on, plot(vX, vY, 'b.', 'MarkerSize', 10)
-%                 plot(vA, vB, 'g.', 'MarkerSize', 4), 
-%                 hold off;
-            elseif get(handles.rdbDiffVoronoi, 'Value')
-
-                thresh = round(get(handles.sldrDiffVoronoi, 'Value'));
-                tic
-                [v,c]=voronoin([vX vY]);
-                disp(sprintf('Voronoi cells computed: %gs',toc));
-
-                tic
-                hold on;
-                vColors = NaN(length(c), 1);
-                for ci = 1:length(c) 
-                    if all(c{ci}~=1)   % If at least one of the indices is 1, 
-                                      % then it is an open region and we can't 
-                                      % patch that.
-                        in = find(inpoly([vA vB], v(c{ci},:)));
-                        if (length(in)>=thresh) 
-                            vColors(ci) = mean(vC(in))-vZ(ci);
-                            patch(v(c{ci},1),v(c{ci},2),vColors(ci)); % use color i.
-                        end
-                    end
-                end
-                
-                [cmap clim] = setColorbar(vColors);
-
-                disp(sprintf('Voronoi cells colored: %gs',toc));
-                colorbar;
-                set(gca,'CLim',clim);
-                hold on, plot(vX, vY, 'b.', 'MarkerSize',4)
-                plot(vA, vB, 'g.', 'MarkerSize',4);
-                hold off;
-            else
-                plot_KNN_diff(nChColor);
-                return;
-            end
+            plotDifferentialExpressionOverTwoGates;
+        end
         end
     end
     
@@ -3236,7 +3173,7 @@ function hPlot=plotScatter
         view(3);
     end
 
-    end
+    
     % --- add density plot for 2D
     if (nSelChannels == 2)
         gating = 'on';
@@ -3287,10 +3224,127 @@ function hPlot=plotScatter
                 setStatus('Warning: please enter numerical values for manual colorbar scaling');
             end    
         end
-   end
-    tic
+    end
+    
     % --- add KNN plot
     plot_knn(handles, nSelChannels, sessionData, gateContext, nCH1, nCH2, nCH3);
+end
+
+function plotDifferentialExpressionOverTwoGates
+handles = gethand;
+gates = retr('gates');
+sessionData = retr('sessionData');
+selected_gates = get(handles.lstGates, 'Value');
+selected_channels = get(handles.lstChannels, 'Value');
+nCH1 = selected_channels(1);
+nCH2 = selected_channels(2);
+nChColor = get(handles.pupColorBy, 'Value')-1;
+
+
+basal_gate = gates{selected_gates(1), 2};
+drug_gate  = gates{selected_gates(2), 2};
+
+% filter indices if user selected to intersect gates
+if get(handles.btnIntersect, 'Value')
+    [inds, ~] = getSelectedIndices(get(handles.lstIntGates, 'Value'));
+    if (~isempty(inds))
+        basal_gate = intersect(inds, basal_gate);
+        drug_gate  = intersect(inds, basal_gate);
+    end
+end
+
+vX = sessionData(basal_gate, nCH1);
+vY = sessionData(basal_gate, nCH2);
+vZ = sessionData(basal_gate, nChColor);
+
+vA = sessionData(drug_gate, nCH1);
+vB = sessionData(drug_gate, nCH2);
+vC = sessionData(drug_gate, nChColor);
+
+
+if get(handles.rdbDiffBox, 'Value')
+    thresh_val = get(handles.sldrThreshold, 'Value');
+    box_size_val = get(handles.sldrBox, 'Value');
+    thresh = round(thresh_val);
+    nbins = round(30-(box_size_val*2));
+    
+    selected_ind = union(basal_gate, drug_gate);
+    XandA = sessionData(selected_ind, nCH1);
+    YandB = sessionData(selected_ind, nCH2);
+    
+    %# bin centers (integers)
+    xbins = linspace(floor(min(XandA)),ceil(max(XandA)),nbins);
+    ybins = linspace(floor(min(YandB)),ceil(max(YandB)),nbins);
+    xNumBins = numel(xbins); yNumBins = numel(ybins);
+    
+    %# map X/Y values to bin indices
+    Xi = round( interp1(xbins, 1:xNumBins, vX, 'linear', 'extrap') );
+    Yi = round( interp1(ybins, 1:yNumBins, vY, 'linear', 'extrap') );
+    
+    %# count number of elements in each bin
+    numPtsXY = accumarray([Yi(:) Xi(:)], 1, [yNumBins xNumBins]);
+    sumXY = accumarray([Yi(:) Xi(:)], vZ, [yNumBins xNumBins]);
+    
+    % TODO take care of thresh
+    XY = sumXY./numPtsXY;
+    %             XY(find(numPtsXY<thresh)) = 0;
+    
+    %# map A/B values to bin indices
+    Ai = round( interp1(xbins, 1:xNumBins, vA, 'linear', 'extrap') );
+    Bi = round( interp1(ybins, 1:yNumBins, vB, 'linear', 'extrap') );
+    
+    %# count number of elements in each bin
+    numPtsAB = accumarray([Bi(:) Ai(:)], 1, [yNumBins xNumBins]);
+    sumAB = accumarray([Bi(:) Ai(:)], vC, [yNumBins xNumBins]);
+    
+    % TODO take care of thresh
+    AB = sumAB./numPtsAB;
+    
+    diff = AB-XY;
+    diff(find(numPtsAB<thresh)) = NaN;
+    diff(find(numPtsXY<thresh)) = NaN;
+    
+    %# plot 2D histogram
+    nanimagesc(diff, genColorMap('rwb', 20), 'zeroc', 1, 'xbins', xbins, 'ybins', ybins);
+    colorbar; set(gca,'YDir','normal'); hold off;
+    %                 hold on, plot(vX, vY, 'b.', 'MarkerSize', 10)
+    %                 plot(vA, vB, 'g.', 'MarkerSize', 4),
+    %                 hold off;
+elseif get(handles.rdbDiffVoronoi, 'Value')
+    
+    thresh = round(get(handles.sldrDiffVoronoi, 'Value'));
+    tic
+    [v,c]=voronoin([vX vY]);
+    disp(sprintf('Voronoi cells computed: %gs',toc));
+    
+    tic
+    hold on;
+    vColors = NaN(length(c), 1);
+    for ci = 1:length(c)
+        if all(c{ci}~=1)   % If at least one of the indices is 1,
+            % then it is an open region and we can't
+            % patch that.
+            in = find(inpoly([vA vB], v(c{ci},:)));
+            if (length(in)>=thresh)
+                vColors(ci) = mean(vC(in))-vZ(ci);
+                patch(v(c{ci},1),v(c{ci},2),vColors(ci)); % use color i.
+            end
+        end
+    end
+    
+    [cmap clim] = setColorbar(vColors);
+    
+    disp(sprintf('Voronoi cells colored: %gs',toc));
+    colorbar;
+    set(gca,'CLim',clim);
+    hold on, plot(vX, vY, 'b.', 'MarkerSize',4)
+    plot(vA, vB, 'g.', 'MarkerSize',4);
+    hold off;
+else
+    plot_KNN_diff(nChColor);
+    return;
+end
+
 end
 
 function fixLegendMarkerSize
@@ -3319,9 +3373,9 @@ function fixLegendMarkerSize
 end
 
 function enableGating(handles, state)
-    set(handles.btnGatePoly,    'Enable', state);
-    set(handles.btnGateRect,    'Enable', state);   
-    set(handles.btnGateEllipse, 'Enable', state);   
+    set(handles.btnGatePoly, 'Enable', state);
+    set(handles.btnGateEllipse, 'Enable', state);
+    set(handles.btnGateRect, 'Enable', state);   
 end
 
 function plot_KNN_diff(color_ch)
@@ -3553,13 +3607,68 @@ function runTSNE(normalize)
         new_channel_names{i} = sprintf('bh-SNE%g', i);
     end
 
-    addChannels(new_channel_names, map, gate_context);
-
+    [vg, vc]=addChannels(new_channel_names, map, gate_context);
+    
+    auxInfo.what = 'tsne';
+    auxInfo.channels = selected_channels;
+    
+    addAuxInfo(vg, vc, auxInfo);
+    
 	waitbar(1,hwaitbar, 'Done.');
     
     close(hwaitbar);
 	setStatus('Done.');
     
+end
+
+% save auxilary info associated with specified channels in specified gates.
+function addAuxInfo(vg, vc, auxInfo)
+    
+    % retrieve the gates
+    gates = retr('gates');
+    
+    % retrieve auxinfo var
+    auxInfos = retr('auxInfos');
+    if isempty(auxInfos)
+        auxInfos = {};
+    end
+    auxInfos{end+1} = auxInfo;
+    infoind = length(auxInfos);
+    
+    % add the auxinfo index to the gate at specified channels
+    for i=vg
+        if size(gates, 2) < 5
+            gates{i, end+1} = [];
+        end
+        vec = gates{i, 5};
+        vec(vc) = infoind;
+        gates{i, 5} = vec;
+    end
+    
+    % save the info and the gates 
+    put('gates', gates);
+    put('auxInfos', auxInfos);
+end
+
+function auxInfo=getAuxInfo(vg, vc)
+   % retrieve the gates
+    gates = retr('gates');
+    
+    % retrieve auxinfo var
+    auxInfos = retr('auxInfos');
+    if isempty(auxInfos) || size(gates, 2) < 5
+        auxInfo = {};
+        return;
+    end
+        
+    % get the auxinfo index from the gate at specified channels
+    infoind = [];
+    for i=vg
+        vec = gates{i, 5};
+        infoind(end+1) = vec(vc(1));
+    end
+
+    auxInfo = auxInfos(unique(infoind));
 end
 
 function runWanderlust
@@ -3570,58 +3679,167 @@ function runWanderlust
     gate_context = retr('gateContext');
     selected_channels = get(handles.lstChannels,'Value');
     gate_names        = get(handles.lstGates, 'String');
+    channel_names     = retr('channelNames');
     
     data = sessionData(gate_context, selected_channels);
+    n = size(data,1);
     
     params = retr('wanderlustParams');
-    if (isempty(params))
+    if (isempty(params) || ~isfield(params, 'l'))
         params = [];
+        
+        % deafult wanderlust params in GUI
+        params.branch = true; 
+        params.band_sample = false;
+        params.voting_scheme = 'uniform';
+        params.flock_landmarks = 2;
+        params.snn = 1;
         params.l = 30;
         params.k = 5;
         params.num_landmarks = 20;
-        params.num_graphs = 25;
-        params.metric = 'cosine';
-        params.normalize = true;
+        params.num_graphs = 10;
+        params.metric = 'euclidean';
         params.selected_gate = numel(gate_names);
+        params.normalization = 'None';
+    else
+        % defaults were already set - just ensure start gate selection
+        params.selected_gate = min(params.selected_gate,numel(gate_names));
     end
     
+    % open dialog for wanderlust options
     params = wanderlustGUI('gates', gate_names, 'params', params);
-    if (isempty(params))
+    if (isempty(params) || ~isfield(params, 'l'))
         return;
     end
-    put('wanderlustParams', params);
-	s = find(gates{params.selected_gate, 2}(1)==gate_context);
+    drawnow;
+        
+    % plot landmarks on some axis for debugging
+    params.plot_landmark_paths = true;
+    ask_plot = true;
     
-    if (isempty(s))
-        uiwait(msgbox('Selected starting points are not in the gate context (selected gates)',...
+    % get user sepecified axis for debug plotting
+    if (params.plot_landmark_paths && ask_plot)
+        [s,v] = listdlg('PromptString','Select channels for plot paths:',...
+        'SelectionMode','multiple',...
+        'InitialValue', length(channel_names),...
+        'ListString',channel_names);
+        if ~v
+            params.plot_landmark_paths = false;
+            params.plot_data = [];
+        end
+        params.plot_data = sessionData(gate_context, s);
+    end
+    
+    % save recent wanderlust options
+    put('wanderlustParams', params);
+
+    % find the first point in the start gate that's included in gate context
+	s = find(ismember(gate_context,gates{params.selected_gate, 2}));
+    s = s(1);
+    
+    if isempty(s)
+        uiwait(msgbox(...
+            'Selected starting points are not in the gate context (selected gates)',...
             'Invalid starting gate','error'));               
         return;
+%     elseif (length(s)>1)  TODO
+%         % use an average of the selected starting points
+%         start_p = mean (data(s, :));
+%         data(end+1, :) = start_p;
+%         s = size(data, 1);
     end
-
+    params.s = s;
+    
+    % apply normalization user request
     try
-        if (params.normalize)
-            data = data-repmat(prctile(data, 1, 1), size(data,1),1);
-            data = data./repmat(prctile((data), 99, 1),size(data,1),1);
-
-            data(data > 1) = 1;
+        if ~isempty(strfind(params.normalization, 'Scaling'))
+            if (strcmpi(params.normalization, 'Feature Scaling'))
+                top = max(data, 1);
+                bottom = min(data, 1);
+            else
+                top = prctile(data, 99, 1);
+                bottom = prctile(data, 1, 1);
+            end
+            data = data-repmat(bottom, n,1);
             data(data < 0) = 0;
+            
+            data = data./repmat(top,n,1);
+            data(data > 1) = 1;
+            
             data(isinf(data)) = 0;
+        elseif strcmpi(params.normalization, 'Standard Score')
+            data = (data-mean(data))./repmat(std(data), n,1);
         end
         
-        [traj, lnn] = wanderlust(data,...
-            params.metric, params.k, params.l,...
-            params.num_graphs, s, params.num_landmarks,...
-            true, []);
+        % branch
+%         params.branch = true; 
+%         params.band_sample = false;
+%         params.voting_scheme = 'linear';
+%         params.flock_landmarks = 1;
+%         params.snn = 1;
         
-        traj = mean(traj, 1);
-        traj = traj';
+        % cycler
+%         params.branch = false; 
+%         params.band_sample = true;
+%         params.voting_scheme = 'exponential';
+%         params.flock_landmarks = 2;
         
-        addChannels({'wanderlust'}, traj, gate_context);
+%         % wanderlust vanilla
+%         params.branch = false; 
+%         params.band_sample = false;
+%         params.voting_scheme = 'exponential';
+%         params.flock_landmarks = 0;
 
+% %  allow to self or zero
+%         params.disallow = zeros(1, size(data,1));
+%         params.disallow(ismember(gate_context, gates{end-3, 2})) = 1; %DN
+%         params.disallow(ismember(gate_context, gates{end-1, 2})) = 2; %CD4
+%         params.disallow(ismember(gate_context, gates{end, 2})) = 3; %CD8
+        
+        % run wanderlust
+%         load('latest_lands.mat');
+%         params.num_landmarks = randsample(1:numel(gate_context), params.num_landmarks);
+%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-4, 2})), 3));
+%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-3, 2})), 15));
+%         params.num_landmarks = union(params.num_landmarks, randsample(find(ismember(gate_context(:),gates{end-2, 2})), 15));
+%         params.num_landmarks = unique(params.num_landmarks);
+%         
+%         params.end_clusters = ones(size(gate_context));
+%         params.end_clusters(ismember(gate_context(:),gates{end-2, 2})) = 2;
+%         params.end_clusters(ismember(gate_context(:),gates{end-1, 2})) = 3;
+        
+        params.search_connected_components = true;
+        G = wanderlust(data,params);
+        save([datestr(now,30) 'all_G.mat'], 'G');
+             
+        % save results
+        if(params.branch)
+            vc=[];
+            for r=1:size(G.T,1)
+                [vg, vci] = addChannels({sprintf('wander-branch%g', r),...
+                                sprintf('branch%g', r),...
+                                sprintf('Y%g', r)},...
+                            [G.T(r,:)' G.B(r, :)' G.Y(r,:)'],...
+                            gate_context);
+                vc = [vc(:)' vci(:)'];
+                auxInfo.what = 'wonderbranch';
+            end
+        else
+            traj = mean(G.T, 1);
+            traj = traj';
+            [vg, vc] = addChannels({'wanderlust'}, traj, gate_context);
+%             traj = G.T';
+%             [vg, vc] = addChannels(strcat({'wanderlust '},int2str((1:size(traj,2)).'))', traj, gate_context);
+            auxInfo.what = 'wanderlust';
+        end
+        auxInfo.channels = selected_channels;
+        auxInfo.params = params;
+
+        addAuxInfo(vg, vc, auxInfo);
     catch e
-        disp(getReport(e,'extended'));        
-        msgbox(sprintf('Wanderlust failed: %s', e.message),...
-            'Error','error', 'modal');  
+        fprintf('Wanderlust failed: %s', getReport(e,'extended'));
+        uiwait(msgbox(sprintf('Wanderlust failed: %s', getReport(e,'basic')),...
+            'Error','error'));  
         return;        
     end
     
@@ -3681,14 +3899,26 @@ function runLouvain(handles)
 	setStatus('Done.');
 end
 
+% params
 % new_channels_names - 1XN Cell array of strings
 % new_data           - MXN data matrix
 % opt_gate_context   - opt: SessionData indices. Default is gateContext
 % opt_gates          - opt: the gate index to add the channel name on to.
-function addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
+% 
+% returns 
+%       affected_g - vector of gate indices which were affected
+%       affected_c - vector of column indices which were affected
+function [affected_g, affected_c]=addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
+    fprintf('\nAdding %g columns of data (%g points) ', size(new_data,2), size(new_data, 1));
+    fprintf('\nany of new data is [%s] ', sprintf('%d ', any(new_data)));
+    
     handles = gethand;
 
-    % set variables
+    % init return variables
+    affected_g=[];
+    affected_c=[];
+    
+    % get variables
     sessionData  = retr('sessionData');
     gates        = retr('gates');    
 
@@ -3728,12 +3958,14 @@ function addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
     if (size(sessionData,2)-undef_channel_ind >= 0) && ...
         any(~any(sessionData(gate_context, undef_channel_ind:end)))
         
-        % find a streak the same width of new_data of empty columns
+        % find a streak of empty columns the same width of new_data 
         d = diff([false any(sessionData(gate_context, undef_channel_ind:end)) == 0 ones(1, size(new_data, 2)) false]);
         p = find(d==1);
         m = find(d==-1);
         lr = find(m-p>=size(new_data, 2));
         last_def_channel = undef_channel_ind - 1 + (p(lr(1)) - 1);
+
+%        fprintf('\ninserting at col %g ', last_def_channel+1);
     else
         last_def_channel = size(sessionData,2);
     end
@@ -3748,8 +3980,9 @@ function addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
                 channel_names{j} = 'cyt_placeholder_tmp';
             end
         end
-        channel_names(end+1:end+numel(new_channel_names)) = new_channel_names;
+        channel_names(end+1:end+numel(new_channel_names)) = new_channel_names(:);
         gates{i, 3} = channel_names;
+        affected_g(end+1) = i;
     end
     
     n_new_columns = size(new_data, 2) - (size(sessionData,2) - last_def_channel);
@@ -3761,8 +3994,11 @@ function addChannels(new_channel_names, new_data, opt_gate_context, opt_gates)
     end
     
     % set new data to session
-    sessionData(gate_context, last_def_channel+1:last_def_channel+size(new_data, 2)) = new_data;    
-
+    columns = last_def_channel+(1:size(new_data, 2));
+    sessionData(gate_context, columns) = new_data;
+    affected_c = columns;
+    fprintf('\naffected columns %s ', sprintf('%d ',affected_c));
+    
     
     put('sessionData', sessionData);
     put('gates', gates);
@@ -3811,6 +4047,22 @@ function cluster(isKmeans)
     
     % add results to GUI
     addChannels({sprintf('%s%g',clust_alg, k_clusters)}, IDX);
+end
+
+function printAuxInfo
+    handles = gethand;
+
+    selected_gates    = get(handles.lstGates, 'Value');
+    selected_channels = get(handles.lstChannels, 'Value'); 
+    channel_names     = retr('channelNames');
+
+    infos = getAuxInfo(selected_gates, selected_channels);
+    for i=1:numel(infos)
+        info = infos{i};
+        fprintf('\ninfo for %s ', info.what);
+        fprintf('\nchannels [ %s] ', sprintf('%d ', info.channels));
+        fprintf('\nchannels names: \n%s ', sprintf('%s \n', channel_names{info.channels}));       
+    end  
 end
 
 function runAffinityPropegation
@@ -4638,7 +4890,7 @@ end
 function cmiAddChannel_Callback(~, ~, ~)
     % get filename
     % request session file
-    [filename, pathname, ~] = uigetfile('*.mat', 'Load SightOff Session');
+    [filename, pathname, ~] = uigetfile('*.mat', 'Load channel');
     if isequal(filename,0) || isequal(pathname,0)
         return;
     end
@@ -5465,7 +5717,8 @@ function runPCA
     gate_context	= retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
     
-    coeff = pca(session_data(gate_context, selected_channels),2);
+    [coeff, mapping] = pca(session_data(gate_context, selected_channels),2);
+    coeff = coeff./repmat(mapping.lambda', size(coeff, 1),1);
     addChannels({'PC1','PC2'}, coeff, gate_context); 
 end
 
@@ -5762,7 +6015,44 @@ function compareMaps
 
     map_compareGUI('session_data',...
                     session_data(randsample(gate_context, min(6000, length(gate_context))),:),...
-                    'channelNames',channel_names)
+                   'channelNames',channel_names);
+end
+
+function runDiffusionMaps
+
+    handles = gethand; % GUI handles to retrieve info from gui as below
+
+%     selected_gates    = get(handles.lstGates, 'Value'); % currently selected 
+    selected_channels = get(handles.lstChannels, 'Value'); % ---------------
+
+    session_data  = retr('sessionData'); % all data
+%     gates         = retr('gates'); % all gates (names\indices) in cell array
+    gate_context  = retr('gateContext'); % indices currently selected
+%     channel_names = retr('channelNames');
+
+%% diffusion map
+%     data = mynormalize(session_data(gate_context, selected_channels), 99.5);
+    data = session_data(gate_context, selected_channels);
+    kev = 15;
+    GraphDiffOpts = struct( 'Normalization','smarkov', ...
+                            'Epsilon',1, ...
+                            'kNN', 15, ...
+                            'kEigenVecs', kev, ...
+                            'Symmetrization', 'W+Wt'); ...
+
+    GD = GraphDiffusion(data', 0, GraphDiffOpts);
+    C = mat2cell([1:kev; GD.EigenVals(1:kev)']',ones(kev, 1));
+    [vg, vc] = addChannels( cellfun(@(x)sprintf('E%g (%2.2f)', x), C, 'UniformOutput', false),...
+                 GD.EigenVecs(:, 1:kev));
+             
+    auxInfo.what = 'Diffusion Map';
+    auxInfo.channels = selected_channels;
+    auxInfo.params = GraphDiffOpts;
+    
+    addAuxInfo(vg, vc, auxInfo);
+
+	return;
+
 end
 
 % ------------
@@ -5780,8 +6070,154 @@ function openEndedAction
     gate_context  = retr('gateContext'); % indices currently selected
     channel_names = retr('channelNames');
 
+    
+    runDiffusionMaps;
+    return;
+    
+    
+    wanderlusti = 202;
+    f=figure('Position', [100, 100, 1500, 450]);
+    for chi=1:numel(selected_channels)
+        X = session_data(gates{selected_gates(1),2}, wanderlusti);
+        B = session_data(gates{selected_gates(1),2}, wanderlusti+2);
+        Y = [];
+        for gi=1:numel(selected_gates)
+            gatei = selected_gates(gi);
+            gateinds = gates{gatei,2};
+            Xi = session_data(gateinds, wanderlusti);
+            Bi = session_data(gateinds, wanderlusti+2);
+            IDX = knnsearch(mynormalize([Xi,Bi],100),mynormalize([X,B],100), 'K',1);
+            Yi = session_data(gateinds, selected_channels(chi));
+            Y(:, end+1) = Yi(IDX);
+        end
+        cla;
+        
+        X=mynormalize(X,100);
+        plot_as_function(X, Y, ...
+                        'num_locs', 100,...
+                        'avg_type', 'gaussian',...
+                        'show_error', false,...
+                        'labels', gates(selected_gates,1),...
+                        'normalize', false,...
+                        'rank', false,...
+                        'svGolay', true,...
+                        'smooth', .8,...
+                        'branchY', B);
+        title(channel_names{selected_channels(chi)});
+        axis([0 1 -.5 6]);
+        imgname = sprintf('out/timeoints 2 %s.png', channel_names{selected_channels(chi)});
+        fprintf('\n...Printing image to file %s', imgname);
+
+        % save to picture to file
+        screen2png(f,imgname);
+    end
+        
+    return;
+
+      tsnech = [204 202];
+%     wanderlust = 62;
+%     branchY    = 64;
+%     grayed_markers = [20 24 26 30];
+    
+%     return;
+%        
+    for gi=1
+        gatedata = session_data(gate_context,:);
+        tsnemap = gatedata(:, tsnech);
+%         expressiondata = gatedata(:, [grayed_markers selected_channels]);
+
+        m_size = numel(selected_channels);
+        opt_h = figure('Position', [100, 100, 300*m_size, 250]);
+
+        % print a row of images with a white label
+        for row=1:m_size
+            subplot('position', [(row-1)/m_size, 0, 1/m_size, 1]);
+
+%            plot_as_function(mynormalize(gatedata(:, wanderlust), 98),...
+%                 expressiondata, ...
+%                 'num_locs', 100,...
+%                 'labels', channel_names([selected_channels]),...
+%                 'smooth', .85,...
+%                 'branchY', gatedata(:, wanderlust));     
+            
+            scatter(tsnemap(:,1), tsnemap(:,2), 50,mynormalize(gatedata(:, selected_channels(row)), 'percentile',99.8),  '.');
+            set(gca,'xtick',[])
+            set(gca,'xticklabel',[])
+            set(gca,'ytick',[])
+            set(gca,'yticklabel',[])
+            colormap jet;
+            title(channel_names{selected_channels(row)});%, 'background', 'w');
+        end
+        imgname = sprintf('out/DP tsne %s', channel_names{selected_channels(row)});
+        fprintf('\n...Printing image to file %s', imgname);
+
+        % save to picture to file
+        screen2png(opt_h,imgname);
+    end
+    
+    return;
+% %     
+%     
+%     
+    %% diffusion map
+    data = mynormalize(session_data(gate_context, selected_channels), 99.5);
+    kev = 15;
+    GraphDiffOpts = struct( 'Normalization','smarkov', ...
+                            'Epsilon',1, ...
+                            'kNN', 15, ...
+                            'kEigenVecs', kev, ...
+                            'Symmetrization', 'W+Wt'); ...
+
+    GD = GraphDiffusion(data', 0, GraphDiffOpts);
+    C = mat2cell([1:kev; GD.EigenVals(1:kev)']',ones(kev, 1));
+    [vg, vc] = addChannels( cellfun(@(x)sprintf('E%g (%2.2f)', x), C, 'UniformOutput', false),...
+                 GD.EigenVecs(:, 1:kev));
+             
+    auxInfo.what = 'Diffusion Map';
+    auxInfo.channels = selected_channels;
+    auxInfo.params = GraphDiffOpts;
+    
+    addAuxInfo(vg, vc, auxInfo);
+
+	return;
+
+    %% gm fit for dna channels
+    for i=selected_gates
+            debris_threshold = 0.95;
+
+            chDNA = cellstrfnd(gates{i, 3}, 'DNA');
+            DNA = session_data(gates{i,2}, chDNA);
+
+            dna_gm = gmdistribution.fit(DNA, 2);
+            [~,j] = max(sum(dna_gm.mu,2));
+            P = dna_gm.posterior(DNA);
+            removeDNA = find(P(:,j) < debris_threshold);
+
+            gates(end+1, :)  = gates(i, :); % copy gate
+            gates{end, 2}(removeDNA) = []; % <-- remove the indices from the gate
+    end
+    put('gates', gates);
+    
+    return;
+    
+    addGate('S_2256', gate_context(2257));
+    % [~, density, d1, d2] = kde2d(data, 1024);
+% contour(d1, d2, density, 128);
+
+    %smoothing - makes it look worse
+% [tt,rr]=cart2pol(ell(:,1),ell(:,2));
+% [l1,l2]=pol2cart(smooth(tt,10,'loess'),rr);
+% ell_smooth=[l1 l2];
+
+    data = session_data(gate_context, selected_channels);
+%     ell = GenerateLoop(data(:, 1)', data(:,2)');
+%     save 'ell-comp3.mat' ell;
+    IDX = knnsearch(ell, data);
+    
+    addChannels({'ERA'}, IDX);
     return; 
     
+                valuesperbin = reshape(data(idx, ch), binsize, nbins);
     % --------- examples and explanation ----------------------------------
     % ---- for example, to plot the curently selected gates\channels, write 
     % along these lines:
@@ -5859,4 +6295,3 @@ function openEndedAction
     %         close(h);
     %      end
 end
-

@@ -28,21 +28,23 @@ function plot_as_function(x, Y, varargin)
 % 'show_error': true or false, shows error bars along the curve, default
 % 'false'
 % 
-% Michelle Tadmor, Columbia University, 2013
+% Michelle Tadmor, Columbia University, 2013-2015
+
+Markers={'-', ':', ':'};
 
 clear persistent_ksdensity;
 legend_flag = false;
-avg_type = 'gaussian_var';
+avg_type = 'gaussian';
 num_locs = 100;
 show_error = false;
 normalize = true;
 rank = false;
-make_distribution_movie = false;
 smoothness_factor = 0.5;
 svGolay = true;
 control_density = false;
 matPatchColors = [0.75 0.75 0.75; 0.6 0.6 0.6; 0 0 1];
 branch = zeros(1, numel(x));
+branchY = zeros(1, numel(x));
 
 for i=1:length(varargin)-1
     if(strcmp(varargin{i},'num_locs'))
@@ -67,9 +69,14 @@ for i=1:length(varargin)-1
         smoothness_factor = varargin{i+1};
     elseif(strcmp(varargin{i},'branch'))
         branch = varargin{i+1};
-    elseif(strcmp(varargin{i},'movie'))
-        make_distribution_movie = true;
-        movie_name = varargin{i+1};
+    elseif(strcmp(varargin{i},'branchY'))
+        branchY = varargin{i+1};
+        Y_scale = branchY-median(branchY);
+        Y_scale(Y_scale<0) = Y_scale(Y_scale<0)./max(abs((Y_scale(Y_scale<0))));
+        Y_scale(Y_scale>0) = Y_scale(Y_scale>0)./max(Y_scale(Y_scale>0));
+        Y_scale(Y_scale<-.3) = -1;        
+        Y_scale(Y_scale>.3) = 1;
+
     end
 end
 
@@ -77,203 +84,232 @@ if (rank)
     x = tiedrank(x);
 end    
 
-weights = zeros(num_locs, length(x));
+real_weights = zeros(num_locs, length(x));
+weights_win = zeros(num_locs, length(x));
 Y_vals = zeros(num_locs, size(Y, 2));
 Y_errs = zeros(num_locs, size(Y, 2));
 Yn = size(Y, 1);
 
+tic;
+
 % compute a weight for each value (data point), at each plot location
 for i=1:num_locs
-	weights(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), avg_type, smoothness_factor);
+    real_weights(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), avg_type, smoothness_factor);
 end
+fprintf('weights computed: %gs\n', toc);
 
-%clean branch
-if any(branch)
-    pre_cleaning = weights;
+tic
 
-    weights_by_branch = sum(weights(:, branch==0), 2);
-    weights_by_branch(:, end+1) = sum(weights(:, branch~=0), 2)
-    branching_loc = find(weights_by_branch(:, 1)<weights_by_branch(:, 2));
-    weights(branching_loc(1):num_locs, branch==0) = 0;
-    weights(1:branching_loc(1)-1, branch~=0) = 0;
-   
-end
-
-real_weights = weights;
-for bri=unique(branch)'
-    if any(branch)
-        weights = real_weights;
-        weights(:, branch~=bri) = 0;
-        visible_locs = find(sum(weights, 2));
-        if (bri ~= 0) % if on a branch
-            trans_length = ceil(num_locs/10);
-            for transi = 1:(trans_length-1)
-                weights(visible_locs(transi), branch~=bri) = (1-transi/trans_length)*pre_cleaning(visible_locs(transi), branch~=bri);
-            end
-        else
-            weights(visible_locs(end)+1, :) = pre_cleaning(visible_locs(end)+1, :);
-        end
-    end
 % Compute weighted averages at each location
-X = linspace(min(x), max(x), num_locs);
-Y_vals = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
+real_weights=robustweighing(real_weights);
+y_vals_all = real_weights*Y./repmat(sum(real_weights, 2), 1, size(Y, 2));
+fprintf('Eighted marker values computed: %gs\n', toc);
 
-if control_density
-    dens = sum(weights, 2)';
-    dens = dens./max(dens);
-    dens = floor(dens*10);
-    X = linspace(min(x), max(x), num_locs+sum(dens));
-    Yrow = 0;
-	Y_vals_stretched = zeros(0, size(Y_vals, 2));
-    for densi=1:numel(dens)
-        Yrow = Yrow+1;
-        copies = 0;
-        while copies<=dens(densi)
-            Y_vals_stretched(end+1, :) = Y_vals(Yrow, :);
-            copies = copies+1;
-        end
-    end
-    Y_vals = Y_vals_stretched;
-	
-    % smooth the streching
-    for col=1:size(Y_vals, 2)
-        Y_vals(:, col) = smooth(X, Y_vals(:, col),sqrt(num_locs*2), 'sgolay');
-    end          
+tic
+if normalize
+    % we want to normalize to [0 1]
+    mins = prctile(y_vals_all, 0, 1);
+    rngs = prctile(bsxfun(@minus, y_vals_all, mins), 100, 1); 
+    
+    y_vals_all = bsxfun(@minus, y_vals_all, mins);
+    y_vals_all = bsxfun(@rdivide, y_vals_all, rngs);
 
+    y_vals_all(y_vals_all<0) = 0;        
+    y_vals_all(y_vals_all>1) = 1;
 end
+fprintf('Normalization values computed: %gs\n', toc);
+    
+Y_vals_branches = cell(1,2);
+Y_vals_raws     = cell(1,2);
+
+% compute both sides of wine glass
+for bri=1:2
+    Y_scale = -1 * Y_scale;
+    
+    tic
+    weights = real_weights;
+    weights=weights.*repmat(1-(max(Y_scale(:)', 0)).^6, num_locs, 1);
+    fprintf('correcting weights for transitioning: %gs\n', toc);
+    
+    % Compute weighted averages at each location
+    X = linspace(min(x), max(x), num_locs);
+    
+    Y_vals_raws{bri} = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));    
+
+    if (normalize)       
+        Y_vals = bsxfun(@minus, Y_vals_raws{bri}, mins);
+        Y_vals = bsxfun(@rdivide, Y_vals, rngs);
+
+        Y_vals(Y_vals<0) = 0;        
+        Y_vals(Y_vals>1) = 1;
+        Y_vals_branches{bri} = Y_vals;
+    else
+        Y_vals_branches{bri} = Y_vals_raws{bri};
+    end
+    
+        
+end
+
+Y_vals_main = Y_vals_branches{1};
+Y_vals = Y_vals_branches{2};
+
+% branch line - we are selective on the plotting
+for loc=num_locs:-1:2
+    markers = find(abs((Y_vals(loc-10,:) - Y_vals_main(loc-10, :))) < .4 & abs((Y_vals(loc,:) - Y_vals_main(loc, :))) < .8);
+    Y_vals(1:(loc-13),markers) = nan;
+
+    if all(isnan(Y_vals(loc,:)))
+        markers = isnan(Y_vals(num_locs-19,:));
+        Y_vals(:,markers) = nan;
+        break;
+    end        
+end
+for coli=1:size(Y,2)
+    nans = find(isnan(Y_vals(:,coli)));
+    if numel(nans)>0 && numel(nans)<num_locs-2
+        zipi = nans(end)+1;
+        Y_vals(zipi+2, coli) = .2*y_vals_all(zipi+2, coli)+ .8*Y_vals(zipi+2, coli);
+        Y_vals(zipi+1, coli) = .5*y_vals_all(zipi+1, coli)+ .5*Y_vals(zipi+1, coli);
+        Y_vals(zipi, coli) = .8*y_vals_all(zipi, coli)+ .2*Y_vals(zipi, coli);
+    end
+end
+Y_vals_main(isnan(Y_vals)) = y_vals_all(isnan(Y_vals));
 
 if (svGolay)  
     for col=1:size(Y_vals, 2)
-        Y_vals(:, col) = smooth(X, Y_vals(:, col),sqrt(num_locs*2), 'sgolay');
+        Y_vals_main(:, col) = smooth(X, Y_vals_main(:, col),sqrt(num_locs*2), 'sgolay');
     end          
 end
 
-Y_vals_orig = Y_vals;
-if (normalize)
-    % we want to normalize while accounting for branches
-    y_vals_all = [];
-    for bri=unique(branch)'
-        weights = real_weights;
-        weights(:, branch~=bri) = 0;
-        % Compute weighted averages at each location
-        y_vals_all = [y_vals_all; weights*Y./repmat(sum(weights, 2), 1, size(Y, 2))];
-    end
-    Y_vals = Y_vals-repmat(prctile(y_vals_all, 1, 1), size(Y_vals,1),1);
-    y_vals_all = y_vals_all-repmat(prctile(y_vals_all, 1, 1), size(y_vals_all,1),1);
-    Y_vals = Y_vals./repmat(prctile((y_vals_all), 97, 1),size(Y_vals,1),1);
-end
+Y_vals_branches{1} = Y_vals_main;
+Y_vals_branches{2} = Y_vals;
 
-matColors = distinguishable_colors(size(Y, 2));
-set(gca, 'ColorOrder', matColors);
-set(0, 'DefaultAxesColorOrder', matColors);
+% for bri=1:2
+% Y_vals = Y_vals_branches{bri};
+% for yi=1:4
+%    marker_vals = Y_vals(:, yi)';
+%    if ~all(isnan(marker_vals))
+%         inds = ~isnan(marker_vals);
+% 
+%         % plot light grey background
+%         X_fill = [X(inds), fliplr(X(inds))];        
+%         Y_fill = [marker_vals(inds)-.01, fliplr(marker_vals(inds)+.01)];
+%         fill(X_fill ,...
+%             Y_fill,...
+%             matColors(yi,:),'linestyle','none','facealpha',.5);
+%         hold on;
+%    end
+% end
+% end
+% iterate for plotting
+for bri=1:2
+%     matColors = distinguishable_colors(size(Y, 2));
+    matColors = jet(size(Y, 2));
+    set(gca, 'ColorOrder', matColors);
+    set(0, 'DefaultAxesColorOrder', matColors);
 
-plot(X, Y_vals(:, 1), 'Color', matColors(1, :));    
-if (size(Y, 2)> 1)
-    for col=2:size(Y, 2)
-        hold on;
-        plot(X, Y_vals(:, col), 'Color', matColors(col, :));        
-    end
-end
-if (show_error)
+    % change marker selection
+    marker = Markers{bri};
+    Y_vals = Y_vals_branches{bri};
+    
+    plot(X, Y_vals(:, 1),marker,...
+         'LineWidth', 2,...
+         'markersize', 4,...
+         'Color', matColors(1, :)); 
 
-    for i=1:num_locs       
-        %symmetrical for error bars
-        Y_errs(i, :) = weights(i, :)*(((Y-repmat(Y_vals_orig(i, :),Yn,1)-repmat(prctile(Y_vals, 1, 1), size(Y,1),1))./...
-            repmat(prctile((Y_vals_orig), 99, 1),size(Y,1),1))).^2/sum(weights(i, :));        
+    if (size(Y, 2)> 1)
+        for col=2:size(Y, 2)
+            hold on;
+            plot(X, Y_vals(:, col),marker,...
+             'LineWidth', 2,...
+             'markersize', 4,...
+             'Color', matColors(col, :));        
+        end
     end
     
-    for yi=1:size(Y, 2)
-        % plot light grey background first for variance
-        fill([X, fliplr(X)], [(Y_vals(:, yi)-Y_errs(:, yi))', fliplr((Y_vals(:, yi)+Y_errs(:, yi))')],...
-            matColors(yi,:),'linestyle','none','facealpha',.5);
+    if (show_error)
+        Y_vals_raw = Y_vals_raws{bri};
+
+        % compute variace along X (symmetically)
+        for i=1:num_locs       
+            
+            %symmetrical
+            Y_errs = bsxfun(@minus,Y,(Y_vals_raw(i, :)));
+
+            M = sum(weights(i, :)~=0);
+            s = (M-1)/M;
+            w_sum = sum(weights(i, :));
+
+            Y_valerrs(i, :) = .5*sqrt((weights(i, :)*((Y_errs).^2))/(s*w_sum));
+        end
+
+        if (normalize)
+            Y_valerrs = bsxfun(@rdivide,Y_valerrs,rngs);
+        end
+
+        % plot the variance as a pretty translucent cloud around line
+        for yi=1:size(Y, 2)
+
+            % plot light grey background first for variance
+            X_fill = [X, fliplr(X)];
+            
+            Y_i = Y_vals(:, yi)';
+            Y_i_err = Y_valerrs(:, yi)';
+            
+            Y_fill = [Y_i-Y_i_err, fliplr(Y_i+Y_i_err)];
+            
+            fill( X_fill, Y_fill,...
+                matColors(yi,:),'linestyle','none','facealpha',.5);
+        end
     end
+
+    % Hold on if plotting more branch lines
+	hold on;
 end
 
-if (any(branch))
-    hold on;
-end
-end
-if ~(rank || control_density)    
-    try
-    dens = sum(weights, 2)';
-    ca = axis;
-    hold on;
-    imagesc(X, ca(3):0.04:ca(3)+.05, dens, [0, max(dens)]);
-    colorbar;
-    axis(ca);
-    catch e
-    disp(getReport(e,'extended'));
+    % show density histogram under the plot to show the concentration 
+    if false %~(rank || control_density)    
+        try
+            dens = sum(weights_win, 2)';
+            ca = axis;
+            hold on;
+            y_range = ca(4)-ca(3);
+            y_buffer = y_range*.04;
+        %     ylim([ca(3)-.1 ca(4)]);
+            imagesc(X, [ca(3)-y_buffer ca(3)-(.5*y_buffer)], dens, [0, max(dens)]);   
+            colorbar;
+            axis([ca(1:2) ca(3)-y_buffer ca(4)]);
+        catch e
+            disp(getReport(e,'extended'));
+        end
     end
-end
 
 if (legend_flag)
-    legend(remove_repeating_strings(labels), 'Interpreter', 'none');
+    l=legend(remove_repeating_strings(labels), 'Interpreter', 'none');
+    set(l, 'Location','NorthEastOutside');
 end
 
-if (make_distribution_movie && askuser('Are you sure you''d like to make a movie?'));
-    
-    distances_per_window = cell(num_locs);
-    for i=1:num_locs
-        distances_per_window{i} = pdist2(Y(weights(i, :) > .4, :), Y(weights(i, :) > .4, :), 'cosine');
-    end
-
-    current_figure = gcf;
-    try 
-    fid = figure;
-    hold on;
-    [f,xi] = ksdensity(distances_per_window{1}(:),'npoints',200);
-    hLine_new = plot(xi, f);
-    title(sprintf('%.2f: %g points', (1/num_locs), sum(weights(1, :) > .4)));
-
-    % Set up the movie.
-    writerObj = VideoWriter(sprintf('%s.avi', movie_name)); % Name it.
-    writerObj.FrameRate = 10;           % How many frames per second.
-
-    open(writerObj); 
-
-    for i=2:num_locs
-        hLine = hLine_new;
-
-        figure(fid); % Makes sure you use your desired frame.
-        if (isempty(distances_per_window{i}(:)))
-            xi = 0;
-            f = 0;
-        else
-            [f,xi] = ksdensity(distances_per_window{i}(:),'npoints',250);
-        end
-        hLine_new = plot(xi, f);
-        title(sprintf('%.2f: %g points', (i/num_locs), sum(weights(i, :) > .4)));
-        delete(hLine);
-
-
-        %if mod(i,4)==0, % Uncomment to take 1 out of every 4 frames.
-            frame = getframe(gcf); % 'gcf' can handle if you zoom in to take a movie.
-            writeVideo(writerObj, frame);
-        %end
-
-    end
-    hold off
-    close(writerObj); % Saves the movie.
-    
-    catch e
-        % Return to base figure
-        set(0,'CurrentFigure', current_figure);
-        disp (getReport(e));
-    end
-end
+% if (check==0)
+%     % saving into file
+%     try
+%     save(cachefilename,'mapMat');
+%     catch
+%         fprintf('error caching weights in %s', cachefilename);
+%     end
+% end
 
 end
 
 function weights = compute_weights(points, loc, type, factor)
     
     range = quantile(points, .98) - quantile(points, .02);
-    min_std_dev = factor*.18*range; % minimum std_dev for dense regions
+    min_std_dev = factor*.1*range; % minimum std_dev for dense regions
     max_std_dev = .19*range; % max std_dev for sparse regions  
     linear_slope = 10/range;
     
     if strcmpi('sliding', type) %set '1's on the indices in the windows 
-        weights = (points < (loc + 2*min_std_dev)) & ...
-                  (points > (loc - 2*min_std_dev));
+        weights = (points < (loc + 2*(min_std_dev))) & ...
+                  (points > (loc - 2*(min_std_dev)));
     
     elseif strcmpi('linear', type)
         weights = 1 - linear_slope*(abs(points - loc));
@@ -296,13 +332,17 @@ function weights = compute_weights(points, loc, type, factor)
     else % default is strcmpi('gaussian', type)
         weights = ((2*pi*(min_std_dev)^2)^(-1))*exp(-.5*((points - loc)/min_std_dev).^2);
     end
-% 	weights = mynormalize(weights(:), 100);
 end
 
-function ind = minind(x)
-    [~, ind] = min(x);
+function weights=robustweighing(weights)
+    for loc=1:size(weights, 1)
+        % no single cell should contribute over 30% of the signal
+        to_slash = (weights(loc, :)./sum(weights(loc, :)) > .35);
+%         weights(loc, to_slash) = weights(loc, to_slash)./4;
+%         
+%         weights(loc, :) = weights(loc, :).*(exp(-weights(loc, :)./(max(weights(loc, :)))));
+    end
 end
-
 
 function [f, xi] = persistent_ksdensity(points)
 

@@ -147,6 +147,7 @@ y = xLabelPosition(2);
 
 %CODE below was modified following suggestions from Urs Schwarz
 y=repmat(y,size(XTick,1),1);
+
 % retrieve current axis' fontsize
 fs = get(gca,'fontsize');
 
