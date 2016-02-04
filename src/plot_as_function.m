@@ -45,6 +45,8 @@ control_density = false;
 matPatchColors = [0.75 0.75 0.75; 0.6 0.6 0.6; 0 0 1];
 branch = zeros(1, numel(x));
 branchY = zeros(1, numel(x));
+changes_view = false;
+merge_similar = false;
 
 for i=1:length(varargin)-1
     if(strcmp(varargin{i},'num_locs'))
@@ -56,6 +58,8 @@ for i=1:length(varargin)-1
         labels = varargin{i+1};
     elseif(strcmp(varargin{i},'show_error'))
         show_error = varargin{i+1};  
+    elseif(strcmp(varargin{i},'changes_view'))
+        changes_view = varargin{i+1};  
     elseif(strcmp(varargin{i},'normalize'))
         normalize = varargin{i+1};
     elseif(strcmp(varargin{i},'rank'))
@@ -154,16 +158,21 @@ Y_vals_main = Y_vals_branches{1};
 Y_vals = Y_vals_branches{2};
 
 % branch line - we are selective on the plotting
-for loc=num_locs:-1:2
-    markers = find(abs((Y_vals(loc-10,:) - Y_vals_main(loc-10, :))) < .4 & abs((Y_vals(loc,:) - Y_vals_main(loc, :))) < .8);
-    Y_vals(1:(loc-13),markers) = nan;
+% some markers stay the same on both branches so we want to keep them
+% together
+if (merge_similar)
+    for loc=num_locs:-1:2
+        markers = find(abs((Y_vals(loc-10,:) - Y_vals_main(loc-10, :))) < .2 & abs((Y_vals(loc,:) - Y_vals_main(loc, :))) < .4);
+        Y_vals(1:(loc-13),markers) = nan;
 
-    if all(isnan(Y_vals(loc,:)))
-        markers = isnan(Y_vals(num_locs-19,:));
-        Y_vals(:,markers) = nan;
-        break;
-    end        
+        if all(isnan(Y_vals(loc,:)))
+            markers = isnan(Y_vals(num_locs-19,:));
+            Y_vals(:,markers) = nan;
+            break;
+        end        
+    end
 end
+
 for coli=1:size(Y,2)
     nans = find(isnan(Y_vals(:,coli)));
     if numel(nans)>0 && numel(nans)<num_locs-2
@@ -201,6 +210,7 @@ Y_vals_branches{2} = Y_vals;
 %    end
 % end
 % end
+
 % iterate for plotting
 for bri=1:2
 %     matColors = distinguishable_colors(size(Y, 2));
@@ -211,6 +221,13 @@ for bri=1:2
     % change marker selection
     marker = Markers{bri};
     Y_vals = Y_vals_branches{bri};
+    
+    % show how\when the markers change over time
+    if (changes_view)
+        show_error = false;
+        Y_vals(2:end, :) = diff(Y_vals);
+        Y_vals(1, :) = Y_vals(2,:);
+    end
     
     plot(X, Y_vals(:, 1),marker,...
          'LineWidth', 2,...

@@ -53,10 +53,10 @@ G.T = []; % traj
 G.B = []; % branch
 
 % Algorithm defaults
-G.Opts.metric = 'cosine';
-G.Opts.k = 8;
-G.Opts.l = 30;
-G.Opts.num_graphs = 25;
+G.Opts.metric = 'euclidean';
+G.Opts.k = 10;
+G.Opts.l = 10;
+G.Opts.num_graphs = 1;
 G.Opts.s = randsample(1:size(data, 1), 1);
 G.Opts.num_landmarks = min(size(data, 1), 100);
 G.Opts.verbose = true;
@@ -65,7 +65,7 @@ G.Opts.partial_order = [];
 G.Opts.deblur = false;
 G.Opts.snn = 0;
 G.Opts.ann = false;
-G.Opts.voting_scheme = 'linear';
+G.Opts.voting_scheme = 'exponential';
 G.Opts.band_sample = true;
 G.Opts.flock_landmarks = 2;
 G.Opts.search_connected_components = true;
@@ -76,7 +76,7 @@ G.Opts.landmarks = [];
 G.Opts.disallow = [];
 G.Opts.cell_clusters = [];
 G.Opts.end_clusters = [];
-G.Opts.plot_debug_branch = true;
+G.Opts.plot_debug_branch = false;
 
 % read parameters can this loop be replaces by G.Opts = Options?
 fn = fieldnames(Options);
@@ -86,10 +86,11 @@ for j=1:length(fn)
 end
 
 rng('shuffle');
-G.Opts.plot_debug_branch = false;
 
 % print options
-G.Opts
+if G.Opts.verbose
+    G.Opts
+end
 
 % Build lNN graph
 if issparse( data ) 
@@ -371,7 +372,7 @@ for graph_iter = 1:G.Opts.num_graphs
         G.B(graph_iter, :) = RNK;
         G.diffdists = diffdists;
         G.bp(graph_iter) = bp;
-        G.Y(graph_iter, :) = Y;
+        G.Y(graph_iter, :) = real(Y);
     else
         G.B = G.T; % branch
         G.bp(graph_iter) = 0;

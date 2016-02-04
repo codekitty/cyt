@@ -56,7 +56,7 @@ function spdists = parfor_spdists_knngraph( x, k, varargin )
 			end
 		end
     end
-    for iter = 1:length(all_chunks)
+    for iter = 1:size(all_chunks,1)
         spdists(all_chunks{iter, 1}) = all_chunks{iter, 2}; %ignore warning, the matrix was pre allocated for efficientcy 
     end
     

@@ -1042,6 +1042,9 @@ function plot_along_time(time_channel)
     if ~isCtrlPressed
         set(handles.pnlWonderlustControls, 'Visible', 'on');
     end
+    
+    % enable gating
+    enableGating(handles, 'on');
 
 	hPlot = subplot(1,1,1,'Parent',handles.pnlPlotFigure);
     box on;
@@ -1082,6 +1085,7 @@ function plot_along_time(time_channel)
     rankY               = get(handles.chkRankY, 'Value');
     svGolay             = get(handles.chkSGolay, 'Value');
     show_error          = get(handles.chkWanderlustError, 'Value');
+    changes_view        = get(handles.chkChangesView, 'Value');
 
     avg_types           = get(handles.pupAvgType, 'String');
     avg_type            = avg_types{get(handles.pupAvgType, 'Value')};
@@ -1122,6 +1126,7 @@ function plot_along_time(time_channel)
                     'num_locs', 100,...
                     'avg_type', avg_type,...
                     'show_error', show_error,...
+                    'changes_view', changes_view,...
                     'labels', channel_names(selected_channels),...
                     'normalize', normalizeY,...
                     'rank', rankY,...
@@ -1133,6 +1138,7 @@ function plot_along_time(time_channel)
                     'num_locs', 100,...
                     'avg_type', avg_type,...
                     'show_error', show_error,...
+                    'changes_view', changes_view,...
                     'labels', gate_names ,...
                     'normalize', normalizeY,...
                     'rank', rankY,...
@@ -3530,17 +3536,7 @@ function plot_knn(handles, nSelChannels, sessionData, gateContext, nCH1, nCH2, n
         else 
             mat = sessionData(gateContext, [nCH1 nCH2 nCH3]);
         end
-        IDX = knnsearch(mat,mat, 'K', k_neighbors+1);
-        for i=1:size(IDX,1)
-            for j=2:size(IDX,2)
-                pts = [mat(i, :);  mat(IDX(i, j), :)];
-                if (nSelChannels == 2)
-                    line(pts(:, 1), pts(:,2));
-                else
-                    line(pts(:, 1), pts(:,2), pts(:,3));
-                end
-            end
-        end
+        plotknn(mat, k_neighbors);
     end
 
 end
@@ -3671,6 +3667,27 @@ function auxInfo=getAuxInfo(vg, vc)
     auxInfo = auxInfos(unique(infoind));
 end
 
+function fixColorScale_callback
+    handles = gethand;
+    if ~get(handles.chkClim, 'Value')
+        return;
+    end
+    
+    min = str2double(get(handles.txtMinColor, 'String'));
+    max = str2double(get(handles.txtMaxColor, 'String'));
+
+    % get current colore min and max
+    [cmin, cmax] = caxis;
+    
+    % set the defult to current values
+    if isempty(min)
+        set(handles.txtMinColor, 'String', num2str(cmin));
+    end
+    if isempty(max)
+        set(handles.txtMaxColor, 'String', num2str(cmax));
+    end 
+end
+
 function runWanderlust
     handles = gethand;
     
@@ -3691,7 +3708,7 @@ function runWanderlust
         % deafult wanderlust params in GUI
         params.branch = true; 
         params.band_sample = false;
-        params.voting_scheme = 'uniform';
+        params.voting_scheme = 'exponential';
         params.flock_landmarks = 2;
         params.snn = 1;
         params.l = 30;
@@ -4143,13 +4160,35 @@ function btnGate_ClickedCallback(~, ~, ~, isPoly)
     selectedChannels = retr('selectedChannels');
     selGates = get(handles.lstGates, 'Value');
 
-    %if the objects are cells - not clusters
+    % if the objects are cells - not clusters
     if ~get(handles.btnCluster,'Value'); 
-    
-        setStatus('Waiting: Double click on node when finished');
-        gate_inds = tsne_gate(gcf, sessionData(gateContext, selectedChannels), 1, isPoly);
-        setStatus([sprintf('you have gated: %g data points %2.2f', numel(gate_inds), (numel(gate_inds)/numel(gateContext))*100) '%']); 
+        
+        % if in line plot (line when plotting wanderlust results
+        if true
+            vTime = sessionData(gateContext, get(handles.lstFunctionalXAxis, 'Value'));
+            vTime = mynormalize(vTime);
+            
+            h = imline(gca);
+            pos = h.getPosition();
+            h.setPosition(pos(:,1), repmat(mean(pos(:,2)),2,1));
+            setPositionConstraintFcn(h,@(pos) [pos(:,1) repmat(mean(pos(:,2)),2,1)])
 
+            setStatus('Adjust your selection. Double click when finished');
+            position = wait(h);
+
+            vTimelim = get(gca,'XLim');
+            left = position(1,1)-min(vTimelim)/range(vTimelim);
+            right = position(2,1)-min(vTimelim)/range(vTimelim); 
+
+            gate_inds = find((mynormalize(vTime)>=left) & (mynormalize(vTime)<=right));
+            delete(h);
+            
+        else % in scatter plot mode
+            setStatus('Waiting: Double click on node when finished');
+            gate_inds = tsne_gate(gcf, sessionData(gateContext, selectedChannels), 1, isPoly);
+        end
+        setStatus([sprintf('you have gated: %g data points %2.2f', numel(gate_inds), (numel(gate_inds)/numel(gateContext))*100) '%']); 
+        
         if size(gate_inds, 2) > 0
             % create new gate
             created=createNewGate(gateContext(gate_inds), retr('channelNames'));
