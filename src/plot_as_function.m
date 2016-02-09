@@ -45,8 +45,10 @@ control_density = false;
 matPatchColors = [0.75 0.75 0.75; 0.6 0.6 0.6; 0 0 1];
 branch = zeros(1, numel(x));
 branchY = zeros(1, numel(x));
+Y_scale = zeros(1, numel(x));
 changes_view = false;
-merge_similar = false;
+merge_similar = true;
+highlight_branch = 0;
 
 for i=1:length(varargin)-1
     if(strcmp(varargin{i},'num_locs'))
@@ -81,6 +83,8 @@ for i=1:length(varargin)-1
         Y_scale(Y_scale<-.3) = -1;        
         Y_scale(Y_scale>.3) = 1;
 
+    elseif (strcmp(varargin{i},'highlight'))
+        highlight_branch = varargin{i+1};
     end
 end
 
@@ -161,27 +165,29 @@ Y_vals = Y_vals_branches{2};
 % some markers stay the same on both branches so we want to keep them
 % together
 if (merge_similar)
-    for loc=num_locs:-1:2
-        markers = find(abs((Y_vals(loc-10,:) - Y_vals_main(loc-10, :))) < .2 & abs((Y_vals(loc,:) - Y_vals_main(loc, :))) < .4);
-        Y_vals(1:(loc-13),markers) = nan;
-
-        if all(isnan(Y_vals(loc,:)))
-            markers = isnan(Y_vals(num_locs-19,:));
-            Y_vals(:,markers) = nan;
-            break;
-        end        
+    % look at the differences between the two branches
+    diffs = abs(Y_vals - Y_vals_main);
+    for mi=1:size(Y_vals, 2)
+        span = 10;
+        z = smooth(diffs(:, mi), span);
+        branch_locations = find(z>.05);
+      
+        if numel(branch_locations) < 10
+            Y_vals = nan;
+            
+        elseif branch_locations(1) > span
+            Y_vals(1:(branch_locations(1)-span), mi) = nan;
+            a = branch_locations(1)-span+1;
+            b = branch_locations(1);
+            ws = (1:span)'./span ;
+            ws = ws-ws(1);
+            ws= ws.^2;
+            Y_vals(a:b,mi) = (1-ws).*y_vals_all(a:b, mi) + ws.*Y_vals(a:b, mi);
+            Y_vals_main(a:b, mi) = (1-ws).*y_vals_all(a:b, mi) + ws.*Y_vals_main(a:b, mi);
+        end
     end
 end
 
-for coli=1:size(Y,2)
-    nans = find(isnan(Y_vals(:,coli)));
-    if numel(nans)>0 && numel(nans)<num_locs-2
-        zipi = nans(end)+1;
-        Y_vals(zipi+2, coli) = .2*y_vals_all(zipi+2, coli)+ .8*Y_vals(zipi+2, coli);
-        Y_vals(zipi+1, coli) = .5*y_vals_all(zipi+1, coli)+ .5*Y_vals(zipi+1, coli);
-        Y_vals(zipi, coli) = .8*y_vals_all(zipi, coli)+ .2*Y_vals(zipi, coli);
-    end
-end
 Y_vals_main(isnan(Y_vals)) = y_vals_all(isnan(Y_vals));
 
 if (svGolay)  
@@ -211,10 +217,21 @@ Y_vals_branches{2} = Y_vals;
 % end
 % end
 
+% plot branch ony if a branchY was given
+plot_branch=1;
+if any(branchY) 
+    plot_branch=2; 
+end
+
 % iterate for plotting
-for bri=1:2
-%     matColors = distinguishable_colors(size(Y, 2));
-    matColors = jet(size(Y, 2));
+sz = ones(1,2);
+if highlight_branch
+    sz(highlight_branch) = 2;
+end
+    
+for bri=1:plot_branch
+    matColors = distinguishable_colors(size(Y, 2));
+%     matColors = jet(size(Y, 2));
     set(gca, 'ColorOrder', matColors);
     set(0, 'DefaultAxesColorOrder', matColors);
 
@@ -230,16 +247,16 @@ for bri=1:2
     end
     
     plot(X, Y_vals(:, 1),marker,...
-         'LineWidth', 2,...
-         'markersize', 4,...
+         'LineWidth', 2*sz(bri),...
+         'markersize', 4*sz(bri),...
          'Color', matColors(1, :)); 
 
     if (size(Y, 2)> 1)
         for col=2:size(Y, 2)
             hold on;
             plot(X, Y_vals(:, col),marker,...
-             'LineWidth', 2,...
-             'markersize', 4,...
+             'LineWidth', 2*sz(bri),...
+             'markersize', 4*sz(bri),...
              'Color', matColors(col, :));        
         end
     end
@@ -302,7 +319,7 @@ end
     end
 
 if (legend_flag)
-    l=legend(remove_repeating_strings(labels), 'Interpreter', 'none');
+    l=legend(labels, 'Interpreter', 'none');
     set(l, 'Location','NorthEastOutside');
 end
 

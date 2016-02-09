@@ -8,8 +8,8 @@ function [ gated_indices ] = tsne_gate(plothandle, mapped_data, ~, type)
         h = imrect(gca);
 
         disp('Adjust your selection. Double click on node when finished');
-%         cyt('setStatus', 'Adjust your selection. Double click on node when finished');
         rect = wait(h);
+        disp('Processing selection...');
 
         left = rect(1);
         bottom = rect(2);
@@ -22,6 +22,7 @@ function [ gated_indices ] = tsne_gate(plothandle, mapped_data, ~, type)
 %     cyt('setStatus', 'Adjust your selection. Double click on node when finished');
     disp('Adjust your selection. Double click on node when finished');
     vert = wait(h);
+    disp('Processing selection...');
 
     gated_indices = find(inpoly(mapped_data, vert));
 end
