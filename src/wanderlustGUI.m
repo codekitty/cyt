@@ -165,6 +165,17 @@ function figure1_CloseRequestFcn(hObject, eventdata, handles)
     end
 end
 
+function chkBranch_callback
+    hgui=getappdata(0,'hwand');
+    handles=guihandles(hgui);
+
+    if (handles.chkBranch.Value)
+        set(handles.txtNumGraphs,'Enable', 'off');
+    else
+        set(handles.txtNumGraphs,'Enable', 'on');
+    end
+end
+
 % --- Executes on key press over figure1 with no controls selected.
 function figure1_KeyPressFcn(hObject, eventdata, handles)
 

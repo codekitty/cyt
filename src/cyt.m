@@ -1441,7 +1441,7 @@ function plot_cluster_tsne
     try
         % Compute tSNE map over centroids
         if (size(centroids, 1) > 10)
-            tSNE_out = fast_tsne(centroids);    %running tSNE on centroids
+            tSNE_out = fast_tsne(centroids, 50, 3);    %running tSNE on centroids
         else
             tSNE_out = tsne(centroids, [], 2, size(centroids,2));  
         end
@@ -3000,7 +3000,7 @@ function hPlot=plotScatter
     
     % clear the figure panel
     cla;
-    colormap jet;
+    colormap(jet(40));
     legend('off');
     colorbar('delete');
     set(gca, 'CLimMode', 'auto');
@@ -3087,7 +3087,7 @@ function hPlot=plotScatter
             end
 
         
-        if (~get(handles.chkDensity, 'Value'))
+        if (~get(handles.chkDensity, 'Value') || nSelChannels == 3)
             myplotclr(vX, vY, vZ, vColor_discrete, 'o', clr, [min(vColor_discrete), max(vColor_discrete)], nSelChannels == 3);
         end
         box on;
@@ -3132,7 +3132,7 @@ function hPlot=plotScatter
                 end
 
                 
-                if (~get(handles.chkDensity, 'Value'))
+                if (~get(handles.chkDensity, 'Value') || nSelChannels == 3)
                         myplotclr(vX, vY, vZ, vColor, 'o', colormap, clim, nSelChannels == 3);   
                 end
                 colorbar;
@@ -3165,7 +3165,7 @@ function hPlot=plotScatter
             end
             
             % plot 
-            if (~get(handles.chkDensity, 'Value'))
+            if (~get(handles.chkDensity, 'Value') || nSelChannels == 3)
                 myplotclr(vX, vY, vZ, vColor_discrete, 'o', clr, [min(vColor_discrete), max(vColor_discrete)], false)
             end
             colorbar off;
@@ -3728,13 +3728,13 @@ function runWanderlust
         params = [];
         
         % deafult wanderlust params in GUI
-        params.branch = true; 
+        params.branch = false; 
         params.band_sample = false;
         params.voting_scheme = 'exponential';
         params.flock_landmarks = 2;
         params.snn = 1;
         params.l = 30;
-        params.k = 5;
+        params.k = 8;
         params.num_landmarks = 20;
         params.num_graphs = 10;
         params.metric = 'euclidean';
@@ -3753,8 +3753,8 @@ function runWanderlust
     drawnow;
         
     % plot landmarks on some axis for debugging
-    params.plot_landmark_paths = true;
-    ask_plot = true;
+    params.plot_landmark_paths = false;
+    ask_plot = false;
     
     % get user sepecified axis for debug plotting
     if (params.plot_landmark_paths && ask_plot)
@@ -3854,10 +3854,14 @@ function runWanderlust
         % save results
         if(params.branch)
             vc=[];
-            for r=1:size(G.T,1)
-                [vg, vci] = addChannels({sprintf('wander-branch%g', r),...
-                                sprintf('branch%g', r),...
-                                sprintf('Y%g', r)},...
+            for r=1:1%size(G.T,1)
+%                 [vg, vci] = addChannels({sprintf('wishbone%g', r),...
+%                                 sprintf('branch-clusters%g', r),...
+%                                 sprintf('branch-score%g', r)},...
+%                             [G.T(r,:)' G.B(r, :)' G.Y(r,:)'],...
+%                             gate_context);
+%                 vc = [vc(:)' vci(:)'];
+                [vg, vci] = addChannels({'wishbone','branch-clusters','branch-score +/-'},...
                             [G.T(r,:)' G.B(r, :)' G.Y(r,:)'],...
                             gate_context);
                 vc = [vc(:)' vci(:)'];

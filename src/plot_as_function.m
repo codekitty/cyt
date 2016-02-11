@@ -94,69 +94,65 @@ end
 
 real_weights = zeros(num_locs, length(x));
 weights_win = zeros(num_locs, length(x));
-Y_vals = zeros(num_locs, size(Y, 2));
-Y_errs = zeros(num_locs, size(Y, 2));
-Yn = size(Y, 1);
 
 tic;
-
 % compute a weight for each value (data point), at each plot location
 for i=1:num_locs
     real_weights(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), avg_type, smoothness_factor);
+    weights_win(i, :)  = compute_weights(x, (i/num_locs)*range(x)+min(x), 'sliding', smoothness_factor);
 end
 fprintf('weights computed: %gs\n', toc);
 
-tic
-
+tic;
 % Compute weighted averages at each location
-real_weights=robustweighing(real_weights);
+% real_weights=robustweighing(real_weights);  % TODO
 y_vals_all = real_weights*Y./repmat(sum(real_weights, 2), 1, size(Y, 2));
 fprintf('Eighted marker values computed: %gs\n', toc);
-
-tic
-if normalize
-    % we want to normalize to [0 1]
-    mins = prctile(y_vals_all, 0, 1);
-    rngs = prctile(bsxfun(@minus, y_vals_all, mins), 100, 1); 
-    
-    y_vals_all = bsxfun(@minus, y_vals_all, mins);
-    y_vals_all = bsxfun(@rdivide, y_vals_all, rngs);
-
-    y_vals_all(y_vals_all<0) = 0;        
-    y_vals_all(y_vals_all>1) = 1;
-end
-fprintf('Normalization values computed: %gs\n', toc);
     
 Y_vals_branches = cell(1,2);
 Y_vals_raws     = cell(1,2);
 
-% compute both sides of wine glass
+X = linspace(min(x), max(x), num_locs);
+
+    % Compute both sides of wine glass
+    % TODO we must zero out the a point's influence (weight) on another branch 
+    % when is it far out on a branch.
+    % This is to prevent one branch leaking to another in places where the
+    % other branch is sparse. This is especially an issue towards the ends
+    % since branches are rarely the same length
 for bri=1:2
-    Y_scale = -1 * Y_scale;
+    Y_scale = (-1^(bri-1)) * Y_scale;
     
-    tic
-    weights = real_weights;
-    weights=weights.*repmat(1-(max(Y_scale(:)', 0)).^6, num_locs, 1);
+    weights=real_weights.*repmat(1-(max(Y_scale(:)', 0)).^0.9, num_locs, 1);
     fprintf('correcting weights for transitioning: %gs\n', toc);
-    
-    % Compute weighted averages at each location
-    X = linspace(min(x), max(x), num_locs);
-    
-    Y_vals_raws{bri} = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));    
 
-    if (normalize)       
-        Y_vals = bsxfun(@minus, Y_vals_raws{bri}, mins);
-        Y_vals = bsxfun(@rdivide, Y_vals, rngs);
-
-        Y_vals(Y_vals<0) = 0;        
-        Y_vals(Y_vals>1) = 1;
-        Y_vals_branches{bri} = Y_vals;
-    else
-        Y_vals_branches{bri} = Y_vals_raws{bri};
+    Y_dens{bri} = sum(weights_win(:, Y_scale<0.01), 2)';
+    
+    branch_sparsity = find(Y_dens{bri} > 5);
+    if (branch_sparsity(end) < num_locs)      
+        weights(branch_sparsity(end):num_locs, :) =...
+            repmat(weights(branch_sparsity(end), :), num_locs-branch_sparsity(end)+1, 1);
     end
     
-        
+    % Compute weighted averages at each location
+    Y_vals_raws{bri} = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
 end
+
+tic
+if normalize
+    % we want to normalize to [0 1] branches as well as trunk
+    both_branches = [Y_vals_raws{1};Y_vals_raws{2}];
+    
+    mins = prctile(both_branches, 0, 1);
+    rngs = prctile(bsxfun(@minus, both_branches, mins), 100, 1); 
+    
+    y_vals_all=translate(y_vals_all, mins, rngs);
+    Y_vals_branches{1} = translate(Y_vals_raws{1}, mins, rngs);
+    Y_vals_branches{2} = translate(Y_vals_raws{2}, mins, rngs);
+else
+    Y_vals_branches = Y_vals_raws;
+end
+fprintf('Normalization values computed: %gs\n', toc);
 
 Y_vals_main = Y_vals_branches{1};
 Y_vals = Y_vals_branches{2};
@@ -170,7 +166,7 @@ if (merge_similar)
     for mi=1:size(Y_vals, 2)
         span = 10;
         z = smooth(diffs(:, mi), span);
-        branch_locations = find(z>.05);
+        branch_locations = find(z>.06);
       
         if numel(branch_locations) < 10
             Y_vals = nan;
@@ -179,11 +175,11 @@ if (merge_similar)
             Y_vals(1:(branch_locations(1)-span), mi) = nan;
             a = branch_locations(1)-span+1;
             b = branch_locations(1);
-            ws = (1:span)'./span ;
+            ws = (1:span)'./span;
             ws = ws-ws(1);
-            ws= ws.^2;
             Y_vals(a:b,mi) = (1-ws).*y_vals_all(a:b, mi) + ws.*Y_vals(a:b, mi);
             Y_vals_main(a:b, mi) = (1-ws).*y_vals_all(a:b, mi) + ws.*Y_vals_main(a:b, mi);
+%             Y_vals_main((b-5):(b+5), mi) = smooth(Y_vals_main((b-5):(b+5), mi),3);
         end
     end
 end
@@ -247,7 +243,7 @@ for bri=1:plot_branch
     end
     
     plot(X, Y_vals(:, 1),marker,...
-         'LineWidth', 2*sz(bri),...
+         'LineWidth', 3*sz(bri),...
          'markersize', 4*sz(bri),...
          'Color', matColors(1, :)); 
 
@@ -255,7 +251,7 @@ for bri=1:plot_branch
         for col=2:size(Y, 2)
             hold on;
             plot(X, Y_vals(:, col),marker,...
-             'LineWidth', 2*sz(bri),...
+             'LineWidth', 3*sz(bri),...
              'markersize', 4*sz(bri),...
              'Color', matColors(col, :));        
         end
@@ -310,7 +306,9 @@ end
             y_range = ca(4)-ca(3);
             y_buffer = y_range*.04;
         %     ylim([ca(3)-.1 ca(4)]);
-            imagesc(X, [ca(3)-y_buffer ca(3)-(.5*y_buffer)], dens, [0, max(dens)]);   
+            imagesc(X, [ca(3)-y_buffer ca(3)-(.5*y_buffer)], Y_dens{1}, [0, max(Y_dens{1})]);
+            hold on;
+%             imagesc(X, [ca(3)-y_buffer ca(3)-(.5*y_buffer)], Y_dens{2}, [0, max(Y_dens{2})]);   
             colorbar;
             axis([ca(1:2) ca(3)-y_buffer ca(4)]);
         catch e
@@ -376,6 +374,14 @@ function weights=robustweighing(weights)
 %         
 %         weights(loc, :) = weights(loc, :).*(exp(-weights(loc, :)./(max(weights(loc, :)))));
     end
+end
+
+function Y=translate(X, min, range)
+    Y = bsxfun(@minus, X, min);
+    Y = bsxfun(@rdivide, Y, range);
+
+    Y(Y<0) = 0;        
+    Y(Y>1) = 1;
 end
 
 function [f, xi] = persistent_ksdensity(points)

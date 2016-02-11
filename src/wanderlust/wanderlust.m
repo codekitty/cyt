@@ -105,6 +105,23 @@ elseif ~isempty(G.Opts.lnn)
     lnn = G.Opts.lnn;
 else
     if G.Opts.verbose 
+        disp 'computing diffusion map';
+        tic;
+    end
+    
+    kev = 6;
+    GraphDiffOpts = struct( 'Normalization','smarkov', ...
+                            'Epsilon',1, ...
+                            'kNN', ceil(mean(G.Opts.l, G.Opts.k)), ...
+                            'kEigenVecs', kev, ...
+                            'Symmetrization', 'W+Wt'); ...
+
+    GD = GraphDiffusion(data', 0, GraphDiffOpts);
+    data = GD.EigenVecs(:, 1:kev);
+    
+	if G.Opts.verbose, fprintf('Diffusion map computed: %gs\n', toc); end
+    
+    if G.Opts.verbose 
         disp 'building lNN graph';
         tic;
     end
@@ -169,7 +186,7 @@ else
     
     % Shared Nearest Neighbor
     if (G.Opts.snn~=0)
-        if (G.Opts.verbose), fprintf('updating using jaccard\n'); tic; end
+        if (G.Opts.verbose), fprintf('updating using jaccard...\n'); tic; end
 
         [j, i, s] = find(lnn);
         % observational note: i is sorted with l-1 apearences each index
@@ -312,7 +329,7 @@ for graph_iter = 1:G.Opts.num_graphs
     
 	% iteratively realign trajectory (because landmarks moved)
 	converged = 0; user_break = 0; realign_iter = 2;
-    G.v = [];
+
 	while  ~converged && ~user_break
 		realign_iter = realign_iter + 1;
 
@@ -331,9 +348,7 @@ for graph_iter = 1:G.Opts.num_graphs
             [RNK, bp, diffdists, Y] = splittobranches(traj, traj(1, : ),data, iter_l, dist,paths_l2l, G.Opts);
             W = muteCrossBranchVoting(W_full, RNK, RNK(G.Opts.s), iter_l,Y);
         end
-       
-        G.v(end+1) = compute_energy(t(end, iter_l), dist(:, iter_l));
-        
+               
 		% calculate weighed trajectory
 		t( realign_iter, : ) = sum( traj .* W );
 
@@ -349,9 +364,6 @@ for graph_iter = 1:G.Opts.num_graphs
         end
 	end
     
-    G.v(end+1) = compute_energy(t(end, iter_l), dist(:, iter_l));
-    figure('Color',[1 1 1]);
-    plot(1:numel(G.v), G.v, '-b');
 %     plot_iterations(G.Opts.plot_data, t);
     
 	fprintf( 1, '\n%d realignment iterations, ', realign_iter-1 );
@@ -886,33 +898,6 @@ function W=muteCrossBranchVoting(W, RNK, trunk_id, landmarks, Y)
 %     end
 end
 
-function v=compute_energy(tau, D)
-        n = numel(tau);
-        sdv = mean ( std ( D) )*3;
-        E = exp( -.5 * (D / sdv).^2);
-        L = E-diag(sum(E, 1));
-        
-        % compute error
-        v = 0;
-        for i=1:n
-            for j=1:n
-                v = v - L(i,j)*((tau(i)-tau(j))^2);
-            end
-        end
-        
-        for i=1:n
-            for j=1:n
-                v = v - 2 * L(i,j)*(abs(tau(i)-tau(j)))*D(i,j);
-%                 v = v + E(i,j)*(abs(tau(i)-tau(j)))*D(i,j);
-            end
-        end
-        
-        % assert sum is constant
-        lambda = sum(E, 1);
-        s = sum(lambda.*tau);        
-        
-        fprintf('\nV = %g\n S = %g\n',v, s);
-end
 
 function plot_iterations(data, t)
     for iter=1:size(t, 1)
