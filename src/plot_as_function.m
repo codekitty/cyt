@@ -126,7 +126,7 @@ for bri=1:2
     weights=real_weights.*repmat(1-(max(Y_scale(:)', 0)).^0.9, num_locs, 1);
     fprintf('correcting weights for transitioning: %gs\n', toc);
 
-    Y_dens{bri} = sum(weights_win(:, Y_scale<0.01), 2)';
+    Y_dens{bri} = sum(weights_win(:, Y_scale<=-0.1), 2)';
     
     branch_sparsity = find(Y_dens{bri} > 5);
     if (branch_sparsity(end) < num_locs)      
@@ -166,7 +166,7 @@ if (merge_similar)
     for mi=1:size(Y_vals, 2)
         span = 10;
         z = smooth(diffs(:, mi), span);
-        branch_locations = find(z>.06);
+        branch_locations = find(z>.05);
       
         if numel(branch_locations) < 10
             Y_vals = nan;

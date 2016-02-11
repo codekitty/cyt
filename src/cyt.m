@@ -168,6 +168,7 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
                'All' '.*'};
     set(handles.lstRegexps, 'String', regexps(:, 1));
 	put('regexps', regexps);
+    put('init_plot_along_time', true);
 
     % Update handles structure
     guidata(hObject, handles);
@@ -1028,7 +1029,7 @@ function plot_histograms(by_gates)
 
 end
 
-function plot_along_time(time_channel)
+function plot_along_time(~,~,~)
     handles = gethand; 
 
     % clear the figure panel
@@ -1060,18 +1061,28 @@ function plot_along_time(time_channel)
     channel_names     = retr('channelNames');
     selected_gates    = get(handles.lstGates, 'Value');
     gate_names        = gates(selected_gates, 1);
-    
-    time_channel      = get(handles.lstFunctionalXAxis, 'Value');
-    if isempty(time_channel)
-        [s,v] = listdlg('PromptString','Select a wonderlust channel (time):',...
-                'SelectionMode','single',...
-                'InitialValue', initTimeSelection,...
-                'ListString',channel_names);
-        if ~v
-            return;
-        end
-        time_channel = s;
+        
+	time_channel      = get(handles.lstFunctionalXAxis, 'Value');
+    if retr('init_plot_along_time') || isempty(time_channel)
+        put('init_plot_along_time', false);
+        chWish = cellstrfnd(channel_names, 'wishbone');
+        chWand = cellstrfnd(channel_names, 'wanderlust');
+        ch = find(chWish | chWand);
+        if numel(ch)>0
+            time_channel= ch(end);
+        else
+            [s,v] = listdlg('PromptString','Select a wonderlust channel (time):',...
+                    'SelectionMode','single',...
+                    'InitialValue', initTimeSelection,...
+                    'ListString',channel_names);
+            if ~v
+                return;
+            end
+            time_channel = s;
+        end  
+        set(handles.lstFunctionalXAxis, 'Value', time_channel);
     end
+        
     
     % ==== TODO === ask by gate or by channels
     by_gate = false;
