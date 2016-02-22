@@ -1090,7 +1090,7 @@ function plot_along_time(~,~,~)
     arrWanderlust = session_data(gate_context, time_channel);
     matData       = session_data(gate_context, selected_channels);
     
-    smoothness_factor   = str2num(get(handles.txtWindowSize, 'String'));
+    smoothness_factor   = str2double(get(handles.txtWindowSize, 'String'));
     normalizeX          = get(handles.chkWanderlustNormX, 'Value');
     normalizeY          = get(handles.chkWanderlustNormY, 'Value');
     rankY               = get(handles.chkRankY, 'Value');
@@ -1100,7 +1100,8 @@ function plot_along_time(~,~,~)
 
     avg_types           = get(handles.pupAvgType, 'String');
     avg_type            = avg_types{get(handles.pupAvgType, 'Value')};
-    highlight_branch    = get(handles.btngBranchHighlight.SelectedObject, 'String');
+    highlight_branch    = get(get(handles.btngBranchHighlight, 'SelectedObject'), 'String');
+    
     switch highlight_branch
         case 'A'
             highlight_branch = 1;
@@ -1135,7 +1136,7 @@ function plot_along_time(~,~,~)
     if normalizeX
         % display wonderlust results
         arrWanderlust = arrWanderlust-min(arrWanderlust);
-         arrWanderlust = arrWanderlust./prctile(arrWanderlust, 97);
+         arrWanderlust = arrWanderlust./prctile(arrWanderlust, 98);
 %         arrWanderlust = arrWanderlust./max(arrWanderlust);
         arrWanderlust(arrWanderlust>1) = 1;
 %         arrWonderlust = 1-arrWonderlust;
@@ -1143,6 +1144,22 @@ function plot_along_time(~,~,~)
     
     if numel(channel_names) > time_channel && any(strfind(channel_names{time_channel+1}, 'branch'))
         set(handles.btngBranchHighlight, 'Visible', 'on');
+%         BAS = session_data(gate_context, time_channel+1);
+%         BAS(BAS==1) = 0;
+%         BAS(BAS==2) = -1;
+%         BAS(BAS==3) = 1;
+%         plot_as_function(arrWanderlust, matData, ...
+%                     'num_locs', 100,...
+%                     'avg_type', avg_type,...
+%                     'show_error', show_error,...
+%                     'changes_view', changes_view,...
+%                     'labels', channel_names(selected_channels),...
+%                     'normalize', normalizeY,...
+%                     'rank', rankY,...
+%                     'svGolay', svGolay,...
+%                     'smooth', smoothness_factor,...
+%                     'branchY', BAS, ...
+%                     'highlight', highlight_branch);
         plot_as_function(arrWanderlust, matData, ...
                     'num_locs', 100,...
                     'avg_type', avg_type,...

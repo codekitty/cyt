@@ -78,11 +78,11 @@ for i=1:length(varargin)-1
     elseif(strcmp(varargin{i},'branchY'))
         branchY = varargin{i+1};
         Y_scale = branchY-median(branchY);
-        Y_scale(Y_scale<0) = Y_scale(Y_scale<0)./max(abs((Y_scale(Y_scale<0))));
-        Y_scale(Y_scale>0) = Y_scale(Y_scale>0)./max(Y_scale(Y_scale>0));
+        Y_scale(Y_scale<0) = Y_scale(Y_scale<0)./prctile(abs((Y_scale(Y_scale<0))), 99.8);
+        Y_scale(Y_scale>0) = Y_scale(Y_scale>0)./prctile(Y_scale(Y_scale>0), 99.8);
         Y_scale(Y_scale<-.3) = -1;        
         Y_scale(Y_scale>.3) = 1;
-
+        
     elseif (strcmp(varargin{i},'highlight'))
         highlight_branch = varargin{i+1};
     end
@@ -99,11 +99,12 @@ tic;
 % compute a weight for each value (data point), at each plot location
 for i=1:num_locs
     real_weights(i, :) = compute_weights(x, (i/num_locs)*range(x)+min(x), avg_type, smoothness_factor);
-    weights_win(i, :)  = compute_weights(x, (i/num_locs)*range(x)+min(x), 'sliding', smoothness_factor);
+    weights_win(i, :)  = compute_weights(x, (i/num_locs)*range(x)+min(x), 'sliding', .1);
 end
 fprintf('weights computed: %gs\n', toc);
 
 tic;
+
 % Compute weighted averages at each location
 % real_weights=robustweighing(real_weights);  % TODO
 y_vals_all = real_weights*Y./repmat(sum(real_weights, 2), 1, size(Y, 2));
@@ -114,28 +115,38 @@ Y_vals_raws     = cell(1,2);
 
 X = linspace(min(x), max(x), num_locs);
 
+if any(Y_scale) 
     % Compute both sides of wine glass
-    % TODO we must zero out the a point's influence (weight) on another branch 
-    % when is it far out on a branch.
-    % This is to prevent one branch leaking to another in places where the
-    % other branch is sparse. This is especially an issue towards the ends
-    % since branches are rarely the same length
-for bri=1:2
-    Y_scale = (-1^(bri-1)) * Y_scale;
-    
-    weights=real_weights.*repmat(1-(max(Y_scale(:)', 0)).^0.9, num_locs, 1);
-    fprintf('correcting weights for transitioning: %gs\n', toc);
+    for bri=1:2
+        Y_scale = (-1^(bri-1)) * Y_scale;
 
-    Y_dens{bri} = sum(weights_win(:, Y_scale<=-0.1), 2)';
-    
-    branch_sparsity = find(Y_dens{bri} > 5);
-    if (branch_sparsity(end) < num_locs)      
-        weights(branch_sparsity(end):num_locs, :) =...
-            repmat(weights(branch_sparsity(end), :), num_locs-branch_sparsity(end)+1, 1);
+        % compute new weights ignore points with a negative Branch
+        % association score (BAS of another branch)
+        weights=real_weights.*repmat(1-(max(Y_scale(:)', 0)).^0.9, num_locs, 1);
+        fprintf('correcting weights for transitioning: %gs\n', toc);
+
+        % gradually ignore trunk points near the end of the trajectory
+        for nl=ceil(num_locs/2):num_locs
+            correct_bias = ((num_locs-nl)/ceil(num_locs/2));
+            weights(nl, abs(Y_scale)<0.3) = weights(nl, abs(Y_scale)<0.3)*correct_bias;
+            weights_win(nl, abs(Y_scale)<0.3) = weights_win(nl, abs(Y_scale)<0.3)*correct_bias;
+        end
+
+        % correction for the 'short branch'
+        branch_sparsity = find(sum(weights_win(:, Y_scale<=-0.2), 2)' > 6);
+        if (branch_sparsity(end) < num_locs)      
+            weights(branch_sparsity(end):num_locs, :) =...
+                repmat(weights(branch_sparsity(end), :), num_locs-branch_sparsity(end)+1, 1);
+        end
+
+        % Compute weighted averages at each location
+        Y_vals_raws{bri} = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
     end
-    
+else
+	weights=real_weights;
     % Compute weighted averages at each location
-    Y_vals_raws{bri} = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
+    Y_vals_raws{1} = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
+    Y_vals_raws{2} = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
 end
 
 tic
@@ -169,7 +180,7 @@ if (merge_similar)
         branch_locations = find(z>.05);
       
         if numel(branch_locations) < 10
-            Y_vals = nan;
+            Y_vals(:,mi) = nan;
             
         elseif branch_locations(1) > span
             Y_vals(1:(branch_locations(1)-span), mi) = nan;
