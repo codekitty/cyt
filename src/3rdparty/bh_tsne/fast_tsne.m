@@ -81,7 +81,7 @@ function mappedX = fast_tsne(X, initial_dims, perplexity, theta)
         hashMat= DataHash(X+perplexity+theta); 
 
         % check for has in cache -> no need to run tsne again
-        if (isKey(mapMat,hashMat)) 
+        if false %(isKey(mapMat,hashMat)) 
             
             value=values(mapMat,{hashMat});
             mappedX=value{1};

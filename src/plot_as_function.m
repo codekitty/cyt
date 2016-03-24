@@ -150,6 +150,7 @@ else
 end
 
 tic
+
 if normalize
     % we want to normalize to [0 1] branches as well as trunk
     both_branches = [Y_vals_raws{1};Y_vals_raws{2}];
@@ -174,10 +175,11 @@ Y_vals = Y_vals_branches{2};
 if (merge_similar)
     % look at the differences between the two branches
     diffs = abs(Y_vals - Y_vals_main);
+    yrange = max([max(Y_vals), max(Y_vals_main)]) - min([min(Y_vals), max(Y_vals_main)]);
     for mi=1:size(Y_vals, 2)
         span = 10;
         z = smooth(diffs(:, mi), span);
-        branch_locations = find(z>.05);
+        branch_locations = find(z>.06*yrange);
       
         if numel(branch_locations) < 10
             Y_vals(:,mi) = nan;
@@ -268,7 +270,7 @@ for bri=1:plot_branch
         end
     end
     
-    if (show_error)
+    if show_error && ~any(Y_scale)
         Y_vals_raw = Y_vals_raws{bri};
 
         % compute variace along X (symmetically)
@@ -308,6 +310,10 @@ for bri=1:plot_branch
 	hold on;
 end
 
+if normalize && ~changes_view
+    ylim([0 1]);
+end
+
     % show density histogram under the plot to show the concentration 
     if false %~(rank || control_density)    
         try
@@ -329,7 +335,7 @@ end
 
 if (legend_flag)
     l=legend(labels, 'Interpreter', 'none');
-    set(l, 'Location','NorthEastOutside');
+%     set(l, 'Location','NorthEastOutside');
 end
 
 % if (check==0)

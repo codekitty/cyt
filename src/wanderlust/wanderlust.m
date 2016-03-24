@@ -77,6 +77,7 @@ G.Opts.disallow = [];
 G.Opts.cell_clusters = [];
 G.Opts.end_clusters = [];
 G.Opts.plot_debug_branch = false;
+G.Opts.kEigs = 6;
 
 % read parameters can this loop be replaces by G.Opts = Options?
 fn = fieldnames(Options);
@@ -91,6 +92,8 @@ rng('shuffle');
 if G.Opts.verbose
     G.Opts
 end
+% G.Opts.plot_landmark_paths = true;
+% Opts.plot_debug_branch = true;
 
 % Build lNN graph
 if issparse( data ) 
@@ -109,17 +112,17 @@ else
         tic;
     end
     
-    kev = 6;
-    GraphDiffOpts = struct( 'Normalization','smarkov', ...
-                            'Epsilon',1, ...
-                            'kNN', ceil(mean(G.Opts.l, G.Opts.k)), ...
-                            'kEigenVecs', kev, ...
-                            'Symmetrization', 'W+Wt'); ...
+    if (G.Opts.kEigs>0 && G.Opts.branch)
+        GraphDiffOpts = struct( 'Normalization','smarkov', ...
+                                'Epsilon',1, ...
+                                'kNN', ceil(mean(G.Opts.l, G.Opts.k)), ...
+                                'kEigenVecs', G.Opts.kEigs, ...
+                                'Symmetrization', 'W+Wt'); ...
 
-    GD = GraphDiffusion(data', 0, GraphDiffOpts);
-    data = GD.EigenVecs(:, 1:kev);
-    
-	if G.Opts.verbose, fprintf('Diffusion map computed: %gs\n', toc); end
+        GD = GraphDiffusion(data', 0, GraphDiffOpts);
+        data = GD.EigenVecs(:, 2:G.Opts.kEigs);
+    	if G.Opts.verbose, fprintf('Diffusion map computed: %gs\n', toc); end
+    end
     
     if G.Opts.verbose 
         disp 'building lNN graph';
@@ -642,7 +645,6 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
     else
         landmark_clusters = [];
     end
-
 
     % square matrix of the difference of perspectives landmark to landmark
     diffdists = abs(reported - proposed);

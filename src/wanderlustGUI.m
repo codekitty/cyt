@@ -89,6 +89,10 @@ for i=1:length(varargin)-1
         set(handles.chkBandSample, 'Value', params.band_sample);
         set(handles.chkBranch, 'Value', params.branch);
         set(handles.lstGates, 'Value', params.selected_gate);
+        if (params.branch) 
+            set(handles.pnlParmeter,'Title', 'Enter Number of diff-map compoenents');
+            set(handles.txtNumGraphs, 'String', num2str(params.kEigs));
+        end
     elseif(strcmp(varargin{i}, 'gates'))
       set(handles.lstGates, 'String', varargin{i+1});
     end
@@ -165,14 +169,14 @@ function figure1_CloseRequestFcn(hObject, eventdata, handles)
     end
 end
 
-function chkBranch_callback
-    hgui=getappdata(0,'hwand');
-    handles=guihandles(hgui);
-
-    if (handles.chkBranch.Value)
-        set(handles.txtNumGraphs,'Enable', 'off');
+function chkBranch_Callback(~,~, handles)
+    
+    if (get(handles.chkBranch, 'Value'))
+        set(handles.pnlParmeter,'Title', 'Enter Number of diff-map compoenents');
+        set(handles.txtNumGraphs,'String', num2str(4));
     else
-        set(handles.txtNumGraphs,'Enable', 'on');
+        set(handles.pnlParmeter,'Title', 'Enter Number of graphs to generate');
+        set(handles.txtNumGraphs,'String', num2str(10));
     end
 end
 
@@ -217,7 +221,6 @@ function W=runWanderlust
     W.selected_gate = get(handles.lstGates, 'Value');
     W.k = str2num(get(handles.txtKNeighbors, 'String'));
     W.l = str2num(get(handles.txtLNeighbors, 'String'));
-    W.num_graphs = str2num(get(handles.txtNumGraphs, 'String'));
     W.num_landmarks = str2num(get(handles.txtNumLandmarks, 'String'));
     W.snn = str2num(get(handles.txtSNN, 'String'));
     W.flock_landmarks = str2num(get(handles.txtFlockLandmarks, 'String'));
@@ -236,6 +239,14 @@ function W=runWanderlust
         
     W.branch = get(handles.chkBranch, 'Value');
     W.band_sample = get(handles.chkBandSample, 'Value');
+    
+    if (W.branch)
+        W.num_graphs = 1;
+    else
+        W.num_graphs = str2num(get(handles.txtNumGraphs, 'String'));
+    end
+    W.kEigs      = str2num(get(handles.txtNumGraphs, 'String'));
+
 end
 
 % --- Executes on button press in btnCancel.

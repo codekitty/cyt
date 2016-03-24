@@ -19,7 +19,7 @@
 % 'gates', KX4 cell-matrix. Each row is a gate (K gates). 
 % gates{i, 1} = visual name of gate that appears in the GUI
 % gates{i, 2} = indices of the gate's data in the sessionData matrix
-% gates{i, 3} = a horazontal cell array of channel names
+% gates{i, 3} = a horizontal cell array of channel names
 % gates{i, 4} = filename if this gate was loaded from a file or empty
 % 
 % vairables are saved using "put('<varname>', var)"
@@ -63,7 +63,7 @@
 % so two placeholder channels are added to your 'T cells' gate before 
 % running tSNE.
 %
-% Michelle Tadmor, Columbia University, 2012-2013
+% Michelle Tadmor, Columbia University, 2012-2016
 % ------------------------
 
 function varargout = cyt(varargin)
@@ -158,8 +158,9 @@ function cyt_OpeningFcn(hObject, ~, handles, varargin)
     put('lastPlotTypeTable', ones(1, numel(plotTypes)));
 
     put('diff', 0);
+    put('plotInNewWindow', false);
     
-    put('gates_listener',   @refreshGates)
+    put('gates_listener',   @refreshGates);
     
     
     % if not found in settings - create default
@@ -259,9 +260,14 @@ if isequal(filename,0) || isequal(pathname,0)
     return;
 end
 
-% load file
-load([pathname filename]);
-
+try 
+    % load file
+    load([pathname filename]);
+catch e
+    uiwait(msgbox(getReport(e,'basic'),'Load failed.','modal'));        
+    return
+end
+    
 % test file validity
 if (exist('session_data', 'var')) %backwards compatibility
     sessionData = session_data;
@@ -297,12 +303,14 @@ end
 
 % make sure axis popups are visible and filled out
 set(handles.plotChannels, 'Visible','on','Enable','on');
+set(handles.btnPlotNewWindow, 'Visible','on','Enable','on');
 set(handles.pupPlotType, 'Visible','on','Enable','on');
  
 selectedGate = get(handles.lstGates, 'Value');
-if (selectedGate > size(gates, 1))
+if (max(selectedGate) > size(gates, 1))
     set(handles.lstGates, 'Value', 1);
 end
+set(handles.lstIntGates, 'Value', 1);
 lstGates_Callback;
 
 end
@@ -316,177 +324,182 @@ function OpenMenuItem_Callback(~, ~, ~)
         currentfolder = '';
     end
 
-    files = uipickfiles('num',[1 inf],'out','cell', 'FilterSpec', [currentfolder '*.fcs']);
-    if isequal(files,0) ~=0
+    allfiles = uipickfiles('num',[1 inf],'out','cell', 'FilterSpec', currentfolder, 'REFilter', '\.fcs$|\.csv$');
+    if isequal(allfiles,0) ~=0
         return 
     end
     
-    [path, ~, ext] = fileparts(files{1});
-    put('currentfolder', [path filesep]);
+    [~, ~, exts] = cellfun(@fileparts, allfiles, 'UniformOutput', false);
+    [uexts, IA, IC] = unique(exts);
     
-    if (strcmp(ext, '.txt')) 
-        % assume all files were txt based and we're loading from SCRATCH
-        hWaitbar = waitbar(0,'reading txt files ...');
-        tic
-        fcsdats = cellfun(@dlmread, files, 'UniformOutput', false);
-        disp(sprintf('Files loaded: %gs',toc));
-
-        sessionData = zeros(0, size(fcsdats{1}, 2));
-        gates = cell(numel(fcsdats),4);
-        waitbar(0.5, hWaitbar, 'Adding data to session ...')
-        for i=1:numel(fcsdats)
-            
-            [~, fcsname, ~] = fileparts(files{i}); 
-            
-            %-- add data to giant matrix
-            currInd = size(sessionData, 1);
-            sessionData(currInd+1:currInd+size(fcsdats{i},1), 1:size(fcsdats{i},2)) = fcsdats{i}(:, :);
-            
-            gates{i, 1} = char(fcsname);
-            gates{i, 2} = currInd+1:currInd+size(fcsdats{i},1);
-            gates{i, 3} = strcat({'channel '},int2str((1:size(fcsdats{i},2)).'))';
-            gates{i, 4} = files{i}; % opt cell column to hold filename
-        end
-    elseif (strcmp(ext, '.h5')) % for prisca: assume only 1 file, empty session data
-        [~, fcsname, ~] = fileparts(files{1}); 
-        tic;
-        hWaitbar = waitbar(0,'reading h5 file ...');
-        info = h5info(files{1});
-        sessionData = h5read(files{1}, [info.Name info.Datasets.Name]);
-        disp(sprintf('File loaded: %gs',toc));
+    for i=1:numel(uexts)
+        files = allfiles(IC==i);
         
-        gates = cell(1,4);
-        gates{1, 1} = char(fcsname);
-        gates{1, 2} = 1:size(sessionData,1);
-        gates{1, 3} = strcat({'channel '},int2str((1:size(sessionData,2)).'))';
-        gates{1, 4} = files{1}; % opt cell column to hold filename
-    elseif (strcmp(ext, '.csv'))
+        [path, ~, ext] = fileparts(files{1});
+        put('currentfolder', [path filesep]);
+    
+        if (strcmp(ext, '.txt')) 
+            % assume all files were txt based and we're loading from SCRATCH
+            hWaitbar = waitbar(0,'reading txt files ...');
+            tic
+            fcsdats = cellfun(@dlmread, files, 'UniformOutput', false);
+            disp(sprintf('Files loaded: %gs',toc));
 
-        hWaitbar = waitbar(0,'reading csv files...');
-        tic
-        
-        
-        %Read in header
-        fids = cellfun(@(f) fopen(f, 'r'), files, 'UniformOutput', false);  %opening files
-        csvheaders = cellfun(@(f) fgetl(f), fids, 'UniformOutput', false);   %readinf first line in file
-        cellfun(@(f) fclose(f), fids, 'UniformOutput', false);  %closing files
-        
-        %Convert  header to cell array
-        csvheaders = cellfun(@(h) regexp(h, '([^,]*)', 'tokens'), csvheaders, 'UniformOutput', false);
-        csvheaders = cellfun(@(h) cat(2, h{:}), csvheaders, 'UniformOutput', false);
-        
+            sessionData = zeros(0, size(fcsdats{1}, 2));
+            gates = cell(numel(fcsdats),4);
+            waitbar(0.5, hWaitbar, 'Adding data to session ...')
+            for i=1:numel(fcsdats)
 
-        %Read in data    
-        csvdats = cellfun(@(fname) csvread(fname, 1,1), files, 'UniformOutput', false);
-        
-        %Add data to session
-        disp(sprintf('Files loaded: %gs',toc));
+                [~, fcsname, ~] = fileparts(files{i}); 
 
-        sessionData = zeros(0, size(csvdats{1}, 2));
-        gates = cell(numel(csvdats),4);
-        waitbar(0.5, hWaitbar, 'Adding data to session ...')
-        for i=1:numel(csvdats)
-            
-            [~, csvname, ~] = fileparts(files{i}); 
-            
-            %-- add data to giant matrix
-            currInd = size(sessionData, 1);
-            sessionData(currInd+1:currInd+size(csvdats{i},1), 1:size(csvdats{i},2)) = csvdats{i}(:, :);
-            
-            gates{i, 1} = char(csvname);
-            gates{i, 2} = currInd+1:currInd+size(csvdats{i},1);
-            gates{i, 3} = csvheaders{i};
-%             gates{i, 3} = strcat({'channel '},int2str((1:size(csvdats{i},2)).'))';
-            gates{i, 4} = files{i}; % opt cell column to hold filename
-        end
-        
-    else % assume files are fcs format (the only officialy supported format)
-        
-        tic
-        [fcsdats fcshdrs]=cellfun(@fca_readfcs, files, 'UniformOutput', false);
-        %cdatas = cellfun(@cytof_data, files, 'UniformOutput', false );
+                %-- add data to giant matrix
+                currInd = size(sessionData, 1);
+                sessionData(currInd+1:currInd+size(fcsdats{i},1), 1:size(fcsdats{i},2)) = fcsdats{i}(:, :);
 
-        disp(sprintf('Files loaded: %gs',toc));
-
-        tic
-        % find out how many 'channels' to allocated
-        y = 0;
-        nfcs = size(fcsdats, 2);
-        hWaitbar = waitbar(0,'Allocating space for session data ...');
-        for i=1:nfcs
-            waitbar(i/nfcs, hWaitbar);
-            y = max([y size(fcsdats{i}, 2)]);
-        end
-
-        % read all data to one huge matrix
-        % and defined gates according to each filename
-        sessionData  = retr('sessionData');
-        if (isempty(sessionData)) 
-            sessionData = zeros(0, y);
-            gates = cell(nfcs,4);
-            last_gate_ind = 0;
-        else 
-            gates = retr('gates');
-            last_gate_ind = size(gates, 1);
-
-            % if we're adding gates that have extra channels. like after the
-            % user has ran tSNE or something like that
-            if (size(sessionData, 2)< y) 
-                sessionData(:, end+1:y) = zeros(size(sessionData,1), y - size(sessionData,2));
+                gates{i, 1} = char(fcsname);
+                gates{i, 2} = currInd+1:currInd+size(fcsdats{i},1);
+                gates{i, 3} = strcat({'channel '},int2str((1:size(fcsdats{i},2)).'))';
+                gates{i, 4} = files{i}; % opt cell column to hold filename
             end
+        elseif (strcmp(ext, '.h5')) % for prisca: assume only 1 file, empty session data
+            [~, fcsname, ~] = fileparts(files{1}); 
+            tic;
+            hWaitbar = waitbar(0,'reading h5 file ...');
+            info = h5info(files{1});
+            sessionData = h5read(files{1}, [info.Name info.Datasets.Name]);
+            disp(sprintf('File loaded: %gs',toc));
+
+            gates = cell(1,4);
+            gates{1, 1} = char(fcsname);
+            gates{1, 2} = 1:size(sessionData,1);
+            gates{1, 3} = strcat({'channel '},int2str((1:size(sessionData,2)).'))';
+            gates{1, 4} = files{1}; % opt cell column to hold filename
+        elseif (strcmp(ext, '.csv'))
+
+            hWaitbar = waitbar(0,'reading csv files...');
+            tic
+
+            %Read in header
+            fids = cellfun(@(f) fopen(f, 'r'), files, 'UniformOutput', false);  %opening files
+            csvheaders = cellfun(@(f) fgetl(f), fids, 'UniformOutput', false);   %readinf first line in file
+            cellfun(@(f) fclose(f), fids, 'UniformOutput', false);  %closing files
+
+            %Convert  header to cell array
+            csvheaders = cellfun(@(h) regexp(h, '([^,]*)', 'tokens'), csvheaders, 'UniformOutput', false);
+            csvheaders = cellfun(@(h) cat(2, h{:}), csvheaders, 'UniformOutput', false);
+
+            %Read in data    
+            csvdats = cellfun(@(fname) csvread(fname, 1,1), files, 'UniformOutput', false);
+
+            %Add data to session
+            disp(sprintf('Files loaded: %gs',toc));
+
+            sessionData = zeros(0, size(csvdats{1}, 2));
+            gates = cell(numel(csvdats),4);
+            waitbar(0.5, hWaitbar, 'Adding data to session ...')
+            for i=1:numel(csvdats)
+
+                [~, csvname, ~] = fileparts(files{i}); 
+
+                %-- add data to giant matrix
+                currInd = size(sessionData, 1);
+                sessionData(currInd+1:currInd+size(csvdats{i},1), 1:size(csvdats{i},2)) = csvdats{i}(:, :);
+
+                gates{i, 1} = char(csvname);
+                gates{i, 2} = currInd+1:currInd+size(csvdats{i},1);
+                gates{i, 3} = csvheaders{i};
+    %             gates{i, 3} = strcat({'channel '},int2str((1:size(csvdats{i},2)).'))';
+                gates{i, 4} = files{i}; % opt cell column to hold filename
+            end
+
+        else % assume files are fcs format (the only officialy supported format)
+
+            tic
+            [fcsdats fcshdrs]=cellfun(@fca_readfcs, files, 'UniformOutput', false);
+            %cdatas = cellfun(@cytof_data, files, 'UniformOutput', false );
+
+            disp(sprintf('Files loaded: %gs',toc));
+
+            tic
+            % find out how many 'channels' to allocated
+            y = 0;
+            nfcs = size(fcsdats, 2);
+            hWaitbar = waitbar(0,'Allocating space for session data ...');
+            for i=1:nfcs
+                waitbar(i/nfcs, hWaitbar);
+                y = max([y size(fcsdats{i}, 2)]);
+            end
+
+            % read all data to one huge matrix
+            % and defined gates according to each filename
+            sessionData  = retr('sessionData');
+            if (isempty(sessionData)) 
+                sessionData = zeros(0, y);
+                gates = cell(nfcs,4);
+                last_gate_ind = 0;
+            else 
+                gates = retr('gates');
+                last_gate_ind = size(gates, 1);
+
+                % if we're adding gates that have extra channels. like after the
+                % user has ran tSNE or something like that
+                if (size(sessionData, 2)< y) 
+                    sessionData(:, end+1:y) = zeros(size(sessionData,1), y - size(sessionData,2));
+                end
+            end
+            disp(sprintf('Allocated space for data: %gs',toc));
+
+            tic
+            waitbar(0, hWaitbar, 'Adding data to session ...')
+            for i=1:nfcs
+
+                %-- add data to giant matrix
+                currInd = size(sessionData, 1);
+                sessionData(currInd+1:currInd+size(fcsdats{i},1), 1:size(fcsdats{i},2)) = fcsdats{i}(:, :);
+
+                %-- save files as gates
+                [~, fcsname, ~] = fileparts(files{i}); 
+                gates{last_gate_ind+i, 1} = char(fcsname);
+                gates{last_gate_ind+i, 2} = currInd+1:currInd+size(fcsdats{i},1);
+    %           gates{last_gate_ind+i, 3} = cdatas{i}.channel_name_map;        
+                gates{last_gate_ind+i, 3} = get_channelnames_from_header(fcshdrs{i});        
+                gates{last_gate_ind+i, 4} = files{i}; % opt cell column to hold filename
+
+                waitbar(i-1/nfcs, hWaitbar, sprintf('Adding %s data to session  ...', gates{last_gate_ind+i, 1}));
+            end
+            disp(sprintf('Read data into session: %gs',toc));
+
         end
-        disp(sprintf('Allocated space for data: %gs',toc));
+        waitbar(1, hWaitbar, 'Saving ...');
 
-        tic
-        waitbar(0, hWaitbar, 'Adding data to session ...')
-        for i=1:nfcs
+        % save the huge matrix, gates and use default empty gate
+        put('sessionData', sessionData);
+        put('gates', gates);
 
-            %-- add data to giant matrix
-            currInd = size(sessionData, 1);
-            sessionData(currInd+1:currInd+size(fcsdats{i},1), 1:size(fcsdats{i},2)) = fcsdats{i}(:, :);
+        set(handles.lstGates,'Value',[]); % Add this line so that the list can be changed
+        set(handles.lstGates,'String',gates(:, 1));
+        set(handles.lstIntGates,'Value',[]); % Add this line so that the list can be changed
+        set(handles.lstIntGates,'String',gates(:, 1));
 
-            %-- save files as gates
-            [~, fcsname, ~] = fileparts(files{i}); 
-            gates{last_gate_ind+i, 1} = char(fcsname);
-            gates{last_gate_ind+i, 2} = currInd+1:currInd+size(fcsdats{i},1);
-%           gates{last_gate_ind+i, 3} = cdatas{i}.channel_name_map;        
-            gates{last_gate_ind+i, 3} = get_channelnames_from_header(fcshdrs{i});        
-            gates{last_gate_ind+i, 4} = files{i}; % opt cell column to hold filename
+        set(handles.lstChannels,'Value',[]); % Add this line so that the list can be changed
 
-            waitbar(i-1/nfcs, hWaitbar, sprintf('Adding %s data to session  ...', gates{last_gate_ind+i, 1}));
-        end
-        disp(sprintf('Read data into session: %gs',toc));
+        set(handles.lstCluChannels,'Value',1);
+        set(handles.lstCluChannels,'String',[]); % Add this line so that the list can be changed
+        set(handles.lstClusterNum, 'Value',1);
+        set(handles.lstClusterNum,'String',[]); % Add this line so that the list can be changed
 
+        % make sure axis popups are visible and filled out
+        set(handles.plotChannels, 'Visible','on','Enable','on');
+        set(handles.btnPlotNewWindow, 'Visible','on','Enable','on');
+        set(handles.pupPlotType, 'Visible','on','Enable','on');
+
+        set(handles.lstGates,'Value',1);
+        set(handles.lstChannels,'Value',[]);
+
+        lstGates_Callback;
+        lstChannels_Callback;
+        close(hWaitbar);
     end
-	waitbar(1, hWaitbar, 'Saving ...');
-
-    % save the huge matrix, gates and use default empty gate
-    put('sessionData', sessionData);
-    put('gates', gates);
-    
-    set(handles.lstGates,'Value',[]); % Add this line so that the list can be changed
-    set(handles.lstGates,'String',gates(:, 1));
-    set(handles.lstIntGates,'Value',[]); % Add this line so that the list can be changed
-    set(handles.lstIntGates,'String',gates(:, 1));
-    
-    set(handles.lstChannels,'Value',[]); % Add this line so that the list can be changed
-
-    set(handles.lstCluChannels,'Value',1);
-    set(handles.lstCluChannels,'String',[]); % Add this line so that the list can be changed
-    set(handles.lstClusterNum, 'Value',1);
-    set(handles.lstClusterNum,'String',[]); % Add this line so that the list can be changed
-    
-    % make sure axis popups are visible and filled out
-    set(handles.plotChannels, 'Visible','on','Enable','on');
-    set(handles.pupPlotType, 'Visible','on','Enable','on');
-    
-    set(handles.lstGates,'Value',1);
-    set(handles.lstChannels,'Value',[]);
-    
-    lstGates_Callback;
-    lstChannels_Callback;
-    
-    close(hWaitbar);
 end
 
 % Due to diffrent names
@@ -752,6 +765,16 @@ function btnEditClusters_Callback(~, ~, ~)
     set(handles.lstClusterNum,'Value',1);
     set(handles.lstClusterNum, 'Visible', 'on');
 end
+function btnPlotNewWindow_Callback(~,~,handles)
+put('plotInNewWindow', true);
+try
+    plotChannels_Callback([], [], handles)
+    put('plotInNewWindow', false)
+catch 
+    put('plotInNewWindow', false)
+end
+
+end
 
 % --- Executes on button press in plotChannels.
 function plotChannels_Callback(~, ~, handles)
@@ -778,8 +801,6 @@ function plotChannels_Callback(~, ~, handles)
     else
         plotBynSelected = plotTypes{6}; %cluster type
     end
-    
-    
     
     % Open in a New Window if Command/ctrl is pressed
 	current_figure = gcf;
@@ -818,7 +839,7 @@ end
 % removing this 'feature' since it is no longer needed now with the 'print
 % image' button. 
 function isCtrlPressed=isCtrlPressed
-    isCtrlPressed = false;
+    isCtrlPressed = retr('plotInNewWindow');
 %     modifiers = get(gcf,'currentModifier'); 
 %     isCtrlPressed = ~isempty(find(ismember({'command'; 'control'},modifiers)));
 end
@@ -1105,7 +1126,7 @@ function plot_along_time(~,~,~)
     switch highlight_branch
         case 'A'
             highlight_branch = 1;
-        case 'B'
+        case 'B'     
             highlight_branch = 2;
         otherwise
             highlight_branch = 0;
@@ -1142,9 +1163,14 @@ function plot_along_time(~,~,~)
 %         arrWonderlust = 1-arrWonderlust;
     end
     
-    if numel(channel_names) > time_channel && any(strfind(channel_names{time_channel+1}, 'branch'))
+    if numel(channel_names) > time_channel && any(strfind(channel_names{time_channel+1}, 'branch-clusters'))
         set(handles.btngBranchHighlight, 'Visible', 'on');
-%         BAS = session_data(gate_context, time_channel+1);
+        set(handles.chkWanderlustError, 'Enable', 'off');
+        BAS = session_data(gate_context, time_channel+2);       
+        if (highlight_branch == 2)
+            BAS = -1*BAS;
+            highlight_branch = 1;
+        end
 %         BAS(BAS==1) = 0;
 %         BAS(BAS==2) = -1;
 %         BAS(BAS==3) = 1;
@@ -1170,10 +1196,11 @@ function plot_along_time(~,~,~)
                     'rank', rankY,...
                     'svGolay', svGolay,...
                     'smooth', smoothness_factor,...
-                    'branchY', session_data(gate_context, time_channel+2), ...
+                    'branchY', BAS, ...
                     'highlight', highlight_branch);
     else
         set(handles.btngBranchHighlight, 'Visible', 'off');
+        set(handles.chkWanderlustError, 'Enable', 'on');
         plot_as_function(arrWanderlust, matData, ...
                     'num_locs', 100,...
                     'avg_type', avg_type,...
@@ -1216,7 +1243,9 @@ function plot_cluster_heat_map
         set(handles.txtSingleClusterPlotTypeHM, 'Visible', 'off');
     end
 
-	hPlot = subplot(1,1,1,'Parent',handles.pnlPlotFigure);
+    delete(gca);
+	hPlot = subplot(1,1,1); %'Parent',handles.pnlPlotFigure);
+    
     % clear the figure panel
     cla;
     colormap jet;
@@ -1465,7 +1494,7 @@ function plot_cluster_tsne
     
     %computing the dot size in the plot by the size of the clusters
     dot_size = 450/max(cluster_mapping(:,5)) * cluster_mapping(:,5)+5;
-
+%     centroids = mynormalize(centroids, 97);
     try
         % Compute tSNE map over centroids
         if (size(centroids, 1) > 10)
@@ -1523,10 +1552,11 @@ function plot_cluster_tsne
                 tsne_col(i)=mean(session_data(IndCellsOfGateIandCluster,color_chan));
             end
             
-            %Ignoring cluster 0 after computing the the Meta clusters
-            tSNE_out=tSNE_out(find(tsne_col),:);
-            dot_size=dot_size(find(tsne_col),:);
-            tsne_col=tsne_col(find(tsne_col));
+%             % TODO checkbox and topography
+%             %Ignoring cluster 0 after computing the the Meta clusters
+%             tSNE_out=tSNE_out(find(tsne_col),:);
+%             dot_size=dot_size(find(tsne_col),:);
+%             tsne_col=tsne_col(find(tsne_col));
 
             metaClusters=tsne_col;
             
@@ -1561,6 +1591,21 @@ function plot_cluster_tsne
         title(color_chan_names(color_chan+1));
     
     end
+    
+	% find axis limits
+    x = tSNE_out(:,1);
+    y = tSNE_out(:,2);
+    x_range  = max(x)-min(x);
+    x_buffer = x_range*.1;
+    x_lim    = [min(x)-x_buffer, max(x)+x_buffer];
+    
+    y_range  = max(y)-min(y);
+    y_buffer = y_range*.1;
+    y_lim    = [min(y)-y_buffer, max(y)+y_buffer];
+
+    xlim(x_lim);
+    ylim(y_lim);
+
     
     put('recenttsne', tSNE_out);
     xlabel('tSNE1');
@@ -2883,8 +2928,7 @@ function generateConditionGates
             file_name = strcat(pathname, '/', gate_names{selected_gates(i)},'_condition.csv');
             csvwrite_with_headers(file_name,new_gate,new_channel_names);
             
-            fprintf('Computing and saving gate for sample %s. time:%g\n\n',gate_names{selected_gates(i)}, toc);
-            
+            fprintf('Computing and saving gate for sample %s. time:%g\n\n',gate_names{selected_gates(i)}, toc);           
         end 
             
     catch e
@@ -3697,13 +3741,14 @@ function addAuxInfo(vg, vc, auxInfo)
 end
 
 function auxInfo=getAuxInfo(vg, vc)
+    auxInfo = {};
+    
    % retrieve the gates
     gates = retr('gates');
     
     % retrieve auxinfo var
     auxInfos = retr('auxInfos');
     if isempty(auxInfos) || size(gates, 2) < 5
-        auxInfo = {};
         return;
     end
         
@@ -3711,10 +3756,16 @@ function auxInfo=getAuxInfo(vg, vc)
     infoind = [];
     for i=vg
         vec = gates{i, 5};
-        infoind(end+1) = vec(vc(1));
+        for j=vc
+            if j <= length(vec) && vec(j)
+                infoind(end+1) = vec(j);
+            end
+        end
     end
-
-    auxInfo = auxInfos(unique(infoind));
+    
+    if any(infoind)
+        auxInfo = auxInfos(unique(infoind));
+    end
 end
 
 function fixColorScale_callback
@@ -3768,6 +3819,7 @@ function runWanderlust
         params.metric = 'euclidean';
         params.selected_gate = numel(gate_names);
         params.normalization = 'None';
+        params.kEigs = 4;
     else
         % defaults were already set - just ensure start gate selection
         params.selected_gate = min(params.selected_gate,numel(gate_names));
@@ -3877,7 +3929,7 @@ function runWanderlust
         
         params.search_connected_components = true;
         G = wanderlust(data,params);
-        save([datestr(now,30) 'all_G.mat'], 'G');
+%         save([datestr(now,30) 'all_G.mat'], 'G');
              
         % save results
         if(params.branch)
@@ -4001,6 +4053,9 @@ function [affected_g, affected_c]=addChannels(new_channel_names, new_data, opt_g
     
     if (exist('opt_gates','var'))
         selected_gates = opt_gates;
+        if isempty(selected_gates)
+            selected_gates = 1:size(gates, 1);
+        end
     else
         selected_gates = get(handles.lstGates, 'Value');
         if isempty(selected_gates)
@@ -4128,12 +4183,98 @@ function printAuxInfo
     channel_names     = retr('channelNames');
 
     infos = getAuxInfo(selected_gates, selected_channels);
-    for i=1:numel(infos)
-        info = infos{i};
-        fprintf('\ninfo for %s ', info.what);
-        fprintf('\nchannels [ %s] ', sprintf('%d ', info.channels));
-        fprintf('\nchannels names: \n%s ', sprintf('%s \n', channel_names{info.channels}));       
-    end  
+    if isempty(infos) 
+        fprintf('\nNo info saved regarding the selected channel\channels');
+    else
+        for i=1:numel(infos)
+            info = infos{i};
+            fprintf('\ninfo for %s ', info.what);
+            fprintf('\nchannels [ %s] ', sprintf('%d ', info.channels));
+            fprintf('\nchannels names: \n%s ', sprintf('%s \n', channel_names{info.channels}));       
+        end  
+    end
+end
+
+function cmiExportChannel_Callback(~,~,~)
+handles = gethand;
+
+session_data  = retr('sessionData'); % all data
+gates  = retr('gates'); % all gates
+gate_context  = retr('gateContext'); % indices currently selected
+channel_names = retr('channelNames');
+selected_channels = get(handles.lstChannels, 'Value'); 
+selected_gates = get(handles.lstGates, 'Value'); 
+
+% get new filename
+[filename, pathname, ~] = uiputfile({'*.csv', 'Comma Separated Values file'},...
+                                    'Save Selected Channels to spreadsheet', [gates{selected_gates(1), 1} '.csv']);
+
+if isequal(filename,0) || isequal(pathname,0)
+    return;
+end
+
+% add gate source indicator if more than one gate was selected
+if numel(selected_gates) > 1
+    nDataLength     = size(session_data,1);
+    gateSources     = zeros(nDataLength, 1);
+
+    % create a new channel for gate course index.
+    fprintf('\nGates saved to CSV with gate indicators as follows:');
+    for gi=selected_gates
+        gateSources(gates{gi, 2}) = gi;
+        fprintf('\n%g, "%s"', gi, gates{gi, 1});
+    end
+    fprintf('\n');
+    
+    % this is only a local change
+    % add gate source to the data
+    session_data(:, end+1) = gateSources(:);
+    % add its channel name
+    channel_names{size(session_data, 2)} = 'Gate Source';
+    % concatinate the gate source at the beginning of the selected channels 
+    selected_channels(2:end+1) = selected_channels;
+    selected_channels(1) = size(session_data, 2);   
+end
+
+csv_headers = matlab.lang.makeValidName(channel_names(selected_channels));
+csv_headers = matlab.lang.makeUniqueStrings(csv_headers);
+
+data = session_data(gate_context, selected_channels);
+
+% Open the file for writing.
+[fid,errmsg] = fopen([pathname filename],'wt'); % text mode: CRLF -> LF
+
+if fid == -1
+   error(message('MATLAB:table:write:FileOpenError', file, errmsg));
+end
+
+if (numel(data) > 200000)
+    pb = true;
+    chunk = floor(size(data,1)/20);
+    msg = 'Exporting to file...';
+    hwaitbar = waitbar(0,msg);
+end
+
+tic;
+% write header
+fprintf(fid,'%s\n',strjoin(csv_headers,', '));
+
+% write data
+fmt = ['%f', repmat(',%f', 1, numel(selected_channels)-1), '\n'];
+for i=1:numel(gate_context)
+    if pb && ~mod(i,chunk)
+        waitbar(i/size(data, 1),hwaitbar, msg);
+    end
+    fprintf(fid,fmt,data(i, :));
+end
+
+% close file
+fclose(fid);
+fprintf('\nexport to csv complete %gs\n', toc);
+if pb
+    waitbar(1,hwaitbar, 'Done.');
+    close(hwaitbar);
+end
 end
 
 function runAffinityPropegation
@@ -5288,6 +5429,10 @@ handles = gethand;
     set(handles.lstRegexps, 'String', regexps(:, 1));
 end
 
+function btnPlotNewWindow_CreateFcn(hObject, ~, ~)
+    placeIcon(hObject, 'open_in_new_window.png');
+end
+
 % --- Executes during object creation, after setting all properties.
 function btnLoadGates_CreateFcn(hObject, ~, ~)
     placeIcon(hObject, 'add.gif');
@@ -5405,13 +5550,18 @@ function btnSwitchAxis_Callback(axis)
     pupAxis_Callback;
 end
 
-function placeIcon(hObject, filename);
+function placeIcon(hObject, filename)
     try 
-        [image_pic, map] = imread(filename);
+        [image_pic, map, alpha] = imread(filename);
         if ~isempty( map ) 
             image_pic = ind2rgb( image_pic, map ); 
         end 
-        set(hObject,'cdata',image_pic); 
+        if any(any(any(image_pic)))
+            set(hObject,'cdata',image_pic); 
+        elseif (any(any(alpha)))
+            alpha = 255-alpha;
+            set(hObject,'cdata',repmat(alpha, 1,1,3)); 
+        end
     catch e
         fprintf('warning: failed reading icon image ''%s''', filename);
     end
@@ -5939,7 +6089,7 @@ function create_indicator_channels_from_gates
         new_names{end+1} = sprintf('%s - indicator', selected_gate_names{i});     
         new_channels(gates{selected_gates(i), 2}, i) =  1;
     end
-    addChannels(new_names, new_channels, 1:size(session_data, 1));  
+    addChannels(new_names, new_channels, 1:size(session_data, 1), []);  
 end
 
 function louvainEach
@@ -6174,17 +6324,26 @@ end
 % ------------
 function openEndedAction
 
+
+    create_indicator_channels_from_gates;
+    
+    return;
+
+    % log-transform current selected data
     handles = gethand; % GUI handles to retrieve info from gui as below
 
-    selected_gates    = get(handles.lstGates, 'Value'); % currently selected 
     selected_channels = get(handles.lstChannels, 'Value'); % ---------------
 
     session_data  = retr('sessionData'); % all data
-    gates         = retr('gates'); % all gates (names\indices) in cell array
     gate_context  = retr('gateContext'); % indices currently selected
-    channel_names = retr('channelNames');
 
+	session_data(gate_context, selected_channels) = asinh( session_data(gate_context, selected_channels)./ 5 );
     
+    put('sessionData', session_data);
+    
+    return;
+    
+    % run diffusion maps
     runDiffusionMaps;
     return;
     
