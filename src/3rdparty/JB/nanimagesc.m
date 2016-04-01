@@ -46,8 +46,8 @@ function nanimagesc(X, cmap, varargin)
     end
     
     nclevel = size(cmap,1); %nclevel is an odd number
-    cmap(2:end+1,:) = cmap;    
-    cmap(1,:) = nancolor; %set NaN to gray, NaN is consider min in imagesc
+%     cmap(2:end+1,:) = cmap;    
+%     cmap(1,:) = nancolor; %set NaN to gray, NaN is consider min in imagesc
     
     if exist('clim','var')
         X(X<clim(1)) = clim(1);
@@ -104,10 +104,10 @@ function nanimagesc(X, cmap, varargin)
     
     colormap(cmap);
     if exist('ylabels','var')
-        set(gca, 'YTick', 1:length(ylabels), 'YTickLabel',ylabels, 'FontSize',8);
+        set(gca, 'YTick', 1:length(ylabels), 'YTickLabel',ylabels, 'FontSize',16);
     end
     if exist('xlabels','var')
-        set(gca, 'XTick', 1:length(xlabels), 'XTickLabel',xlabels, 'FontSize',8);
+        set(gca, 'XTick', 1:length(xlabels), 'XTickLabel',xlabels, 'FontSize',18);
     end
     if ~isempty(passpara)
         set(gca, passpara(:,1), passpara(:,2)');

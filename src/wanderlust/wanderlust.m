@@ -495,7 +495,6 @@ function [ traj, dist, l, RNK,paths_l2l, diffdists,Y ] = trajectory_landmarks( s
     partial_order = [G.Opts.s;G.Opts.partial_order(:)]; % partial_order includes start point
 	l = [ partial_order; n(:) ]; % add extra landmarks if user specified
     
-	if true
     % calculate all shortest paths
     paths_l2l = cell(length(l),1);
     for li = 1:length( l )
@@ -557,28 +556,6 @@ function [ traj, dist, l, RNK,paths_l2l, diffdists,Y ] = trajectory_landmarks( s
     if ~isempty(G.Opts.exclude_points)
         dist(:, G.Opts.exclude_points) = mean(mean(dist~=inf));
     end
-    else
-
-    kev = 15;
-    GraphDiffOpts = struct( 'Normalization','smarkov', ...
-                            'Epsilon',1, ...
-                            'kNN', 15, ...
-                            'kEigenVecs', kev, ...
-                            'Symmetrization', 'W+Wt'); ...
-
-    GD = GraphDiffusion(data', 0, GraphDiffOpts);
-    paths_l2l = cell(length( l ),1);
-    for li = 1:length( l )
-        dist(li, :) = 100*sqrt(sum(bsxfun(@minus, GD.EigenVecs(:, 2:kev), GD.EigenVecs(l(li), 2:kev)).^2, 2));
-        paths={};
-
-       [~, paths, ~] = graphshortestpath( spdists, l( li ),'METHOD','Dijkstra', 'directed', false );
-       paths_l2l{li} = paths(l);
-        if( G.Opts.verbose )
-            fprintf( 1, '.' );
-        end
-    end
-    end
     
     if any(any(dist==inf))
         dist(dist==inf) = max(max(dist~=inf));
@@ -635,16 +612,12 @@ function [ traj, dist, l, RNK,paths_l2l, diffdists,Y ] = trajectory_landmarks( s
 end
 
 function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, dist, paths_l2l, Opts)
+    if any(isnan(t))
+        disp t;
+    end
     
     proposed = repmat(t(landmarks), size(trajs, 1), 1);
     reported = trajs(1:length(landmarks), landmarks);
-
-    % Extract landmark clusters if specified
-    if (length(Opts.cell_clusters) > 0)
-        landmark_clusters = Opts.cell_clusters(landmarks);
-    else
-        landmark_clusters = [];
-    end
 
     % square matrix of the difference of perspectives landmark to landmark
     diffdists = abs(reported - proposed);
@@ -727,6 +700,13 @@ function [RNK, pb, diffdists, Y] = splittobranches(trajs, t, data, landmarks, di
     Y = zeros(1,n);
     Y(landmarks) = e2;
     Y(regular_points)=(Stoch'*e2(:)).*(t(regular_points)'.^.7);
+    
+    % Take care of points that are so far away from the entire dataset
+    % that their projection is nan
+    if any(isnan(Y))
+        % set their Y to the Y of their closest landmark
+        Y(isnan(Y)) = Y(minind(dist(~isnan(Y(landmarks)), isnan((Y)))));
+    end
     
     if (Opts.plot_landmark_paths && (Opts.plot_debug_branch || numel(unique(c_new))<3))
 
@@ -869,15 +849,27 @@ function W=muteCrossBranchVoting(W, RNK, trunk_id, landmarks, Y)
     Y_pos = abs(Y_scale)';
 
     W_test= W;
-    b=std(Y_scale);
+    b=nanstd(Y_scale);
+    % for each landmark
     for i=1:numel(Y)
+        
+        % find all landmarks that may be on an opposing branch
         crossb = sign(Y_scale(i))~=sign(Y_scale(landmarks));
+        
+        % mute their weight depending on how committed they are and how
+        % committed the curr landmark is
         W_test(crossb, i) = W(crossb,i).*...
                                 max(exp(-.5*(Y_pos(i).^2)./b),...
                                     exp(-.5*(Y_pos(landmarks(crossb)).^2)./b));
+                                
+        if any(isnan(W_test(crossb, i)))
+            disp W;
+        end 
     end   
     W = columndiv(W_test, sum( W_test ));
-    
+    if any(isnan(W))
+        disp W;
+    end
 %     i = 47649 
 %     [W(:,i) W_test(:, i) Y_scale(landmarks)' Y_scale(i)*ones(length(landmarks),1)]
 

@@ -1123,6 +1123,10 @@ function plot_along_time(~,~,~)
     avg_type            = avg_types{get(handles.pupAvgType, 'Value')};
     highlight_branch    = get(get(handles.btngBranchHighlight, 'SelectedObject'), 'String');
     
+    if changes_view & strcmpi(highlight_branch, 'none')
+        set(handles.btngBranchHighlight, 'SelectedObject', handles.rdbA);
+    end
+    
     switch highlight_branch
         case 'A'
             highlight_branch = 1;
@@ -1157,15 +1161,15 @@ function plot_along_time(~,~,~)
     if normalizeX
         % display wonderlust results
         arrWanderlust = arrWanderlust-min(arrWanderlust);
-         arrWanderlust = arrWanderlust./prctile(arrWanderlust, 98);
-%         arrWanderlust = arrWanderlust./max(arrWanderlust);
+%          arrWanderlust = arrWanderlust./prctile(arrWanderlust, 99);
+        arrWanderlust = arrWanderlust./max(arrWanderlust);
         arrWanderlust(arrWanderlust>1) = 1;
 %         arrWonderlust = 1-arrWonderlust;
     end
     
     if numel(channel_names) > time_channel && any(strfind(channel_names{time_channel+1}, 'branch-clusters'))
         set(handles.btngBranchHighlight, 'Visible', 'on');
-        set(handles.chkWanderlustError, 'Enable', 'off');
+%         set(handles.chkWanderlustError, 'Enable', 'off');
         BAS = session_data(gate_context, time_channel+2);       
         if (highlight_branch == 2)
             BAS = -1*BAS;
@@ -1200,7 +1204,7 @@ function plot_along_time(~,~,~)
                     'highlight', highlight_branch);
     else
         set(handles.btngBranchHighlight, 'Visible', 'off');
-        set(handles.chkWanderlustError, 'Enable', 'on');
+%         set(handles.chkWanderlustError, 'Enable', 'on');
         plot_as_function(arrWanderlust, matData, ...
                     'num_locs', 100,...
                     'avg_type', avg_type,...
@@ -3796,6 +3800,7 @@ function runWanderlust
     sessionData  = retr('sessionData');
     gate_context = retr('gateContext');
     selected_channels = get(handles.lstChannels,'Value');
+    selected_gates    = get(handles.lstGates, 'Value');
     gate_names        = get(handles.lstGates, 'String');
     channel_names     = retr('channelNames');
     
@@ -3835,6 +3840,15 @@ function runWanderlust
     % plot landmarks on some axis for debugging
     params.plot_landmark_paths = false;
     ask_plot = false;
+    if (params.branch && params.kEigs > 0)
+        % check that the user hasn't already selected dm comps from the
+        % channel list
+        auxInfo = getAuxInfo(selected_gates,selected_channels);
+        if any(cellfun(@(info)strcmpi('Diffusion Map', info.what), auxInfo, 'UniformOutput', true))
+            params.kEigs = 0;
+            fprintf('\nWarn: One of the selected chanels is a diffusion map output, wanderlust will run directly on the selected channel and will not run Diffusion Maps again on this channel.\n');
+        end
+    end
     
     % get user sepecified axis for debug plotting
     if (params.plot_landmark_paths && ask_plot)
@@ -4184,7 +4198,7 @@ function printAuxInfo
 
     infos = getAuxInfo(selected_gates, selected_channels);
     if isempty(infos) 
-        fprintf('\nNo info saved regarding the selected channel\channels');
+        fprintf('\nNo info saved regarding the selected channels');
     else
         for i=1:numel(infos)
             info = infos{i};
@@ -6286,35 +6300,39 @@ function runDiffusionMaps
 
     handles = gethand; % GUI handles to retrieve info from gui as below
 
-%     selected_gates    = get(handles.lstGates, 'Value'); % currently selected 
-    selected_channels = get(handles.lstChannels, 'Value'); % ---------------
+    % ask user for cluster count to recognize
+    n_comps = inputdlg('Enter number of Diffusion Components: ',...
+                          'Diffusion Maps', 1, {num2str(6)}); 
+    
+    if (isempty(n_comps) || str2num(n_comps{1}) == 0)
+        return;
+    end
 
+    kev = str2num(n_comps{1});
+
+    selected_channels = get(handles.lstChannels, 'Value'); % selected ch
     session_data  = retr('sessionData'); % all data
-%     gates         = retr('gates'); % all gates (names\indices) in cell array
     gate_context  = retr('gateContext'); % indices currently selected
-%     channel_names = retr('channelNames');
 
 %% diffusion map
 %     data = mynormalize(session_data(gate_context, selected_channels), 99.5);
     data = session_data(gate_context, selected_channels);
-    kev = 15;
     GraphDiffOpts = struct( 'Normalization','smarkov', ...
                             'Epsilon',1, ...
                             'kNN', 15, ...
-                            'kEigenVecs', kev, ...
+                            'kEigenVecs', kev+1, ...
                             'Symmetrization', 'W+Wt'); ...
 
     GD = GraphDiffusion(data', 0, GraphDiffOpts);
-    C = mat2cell([1:kev; GD.EigenVals(1:kev)']',ones(kev, 1));
-    [vg, vc] = addChannels( cellfun(@(x)sprintf('E%g (%2.2f)', x), C, 'UniformOutput', false),...
-                 GD.EigenVecs(:, 1:kev));
+    C = mat2cell([2:(kev+1); GD.EigenVals(2:(kev+1))']',ones(kev, 1));
+    [vg, vc] = addChannels( cellfun(@(x)sprintf('DM E%g (%2.2f)', x), C, 'UniformOutput', false),...
+                 GD.EigenVecs(:, 2:(kev+1)));
              
     auxInfo.what = 'Diffusion Map';
     auxInfo.channels = selected_channels;
     auxInfo.params = GraphDiffOpts;
     
     addAuxInfo(vg, vc, auxInfo);
-
 	return;
 
 end

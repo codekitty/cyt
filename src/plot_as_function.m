@@ -122,42 +122,46 @@ if any(Y_scale)
 
         % compute new weights ignore points with a negative Branch
         % association score (BAS of another branch)
-        weights=real_weights.*repmat(1-(max(Y_scale(:)', 0)).^0.9, num_locs, 1);
+        weights{bri}=real_weights.*repmat(1-(max(Y_scale(:)', 0)).^0.9, num_locs, 1);
         fprintf('correcting weights for transitioning: %gs\n', toc);
 
         % gradually ignore trunk points near the end of the trajectory
         for nl=ceil(num_locs/2):num_locs
             correct_bias = ((num_locs-nl)/ceil(num_locs/2));
-            weights(nl, abs(Y_scale)<0.3) = weights(nl, abs(Y_scale)<0.3)*correct_bias;
+            weights{bri}(nl, abs(Y_scale)<0.3) = weights{bri}(nl, abs(Y_scale)<0.3)*correct_bias;
             weights_win(nl, abs(Y_scale)<0.3) = weights_win(nl, abs(Y_scale)<0.3)*correct_bias;
         end
 
         % correction for the 'short branch'
         branch_sparsity = find(sum(weights_win(:, Y_scale<=-0.2), 2)' > 6);
         if (branch_sparsity(end) < num_locs)      
-            weights(branch_sparsity(end):num_locs, :) =...
-                repmat(weights(branch_sparsity(end), :), num_locs-branch_sparsity(end)+1, 1);
+            weights{bri}(branch_sparsity(end):num_locs, :) =...
+                repmat(weights{bri}(branch_sparsity(end), :), num_locs-branch_sparsity(end)+1, 1);
         end
 
         % Compute weighted averages at each location
-        Y_vals_raws{bri} = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
+        Y_vals_raws{bri} = weights{bri}*Y./repmat(sum(weights{bri}, 2), 1, size(Y, 2));
     end
 else
-	weights=real_weights;
     % Compute weighted averages at each location
-    Y_vals_raws{1} = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
-    Y_vals_raws{2} = weights*Y./repmat(sum(weights, 2), 1, size(Y, 2));
+    Y_vals_raws{1} = real_weights*Y./repmat(sum(real_weights, 2), 1, size(Y, 2));
+    
+    % pretend like there are two identical branches to simplify the rest of
+    % the code
+    Y_vals_raws{2} = Y_vals_raws{1};
+    weights{1}=real_weights;
+	weights{2}=real_weights;
 end
 
 tic
 
-if normalize
-    % we want to normalize to [0 1] branches as well as trunk
-    both_branches = [Y_vals_raws{1};Y_vals_raws{2}];
-    
-    mins = prctile(both_branches, 0, 1);
-    rngs = prctile(bsxfun(@minus, both_branches, mins), 100, 1); 
-    
+% we want to normalize to [0 1] branches as well as trunk
+both_branches = [Y_vals_raws{1};Y_vals_raws{2}];
+
+mins = prctile(both_branches, 0, 1);
+rngs = prctile(bsxfun(@minus, both_branches, mins), 100, 1); 
+
+if normalize  
     y_vals_all=translate(y_vals_all, mins, rngs);
     Y_vals_branches{1} = translate(Y_vals_raws{1}, mins, rngs);
     Y_vals_branches{2} = translate(Y_vals_raws{2}, mins, rngs);
@@ -167,64 +171,46 @@ end
 fprintf('Normalization values computed: %gs\n', toc);
 
 Y_vals_main = Y_vals_branches{1};
-Y_vals = Y_vals_branches{2};
+Y_vals_brnch = Y_vals_branches{2};
 
 % branch line - we are selective on the plotting
 % some markers stay the same on both branches so we want to keep them
 % together
 if (merge_similar)
     % look at the differences between the two branches
-    diffs = abs(Y_vals - Y_vals_main);
-    yrange = max([max(Y_vals), max(Y_vals_main)]) - min([min(Y_vals), max(Y_vals_main)]);
-    for mi=1:size(Y_vals, 2)
+    diffs = abs(Y_vals_brnch - Y_vals_main);
+    yrange = max([max(Y_vals_brnch), max(Y_vals_main)]) - min([min(Y_vals_brnch), max(Y_vals_main)]);
+    for mi=1:size(Y_vals_brnch, 2)
         span = 10;
         z = smooth(diffs(:, mi), span);
         branch_locations = find(z>.06*yrange);
       
         if numel(branch_locations) < 10
-            Y_vals(:,mi) = nan;
+            Y_vals_brnch(:,mi) = nan;
             
         elseif branch_locations(1) > span
-            Y_vals(1:(branch_locations(1)-span), mi) = nan;
+            Y_vals_brnch(1:(branch_locations(1)-span), mi) = nan;
             a = branch_locations(1)-span+1;
             b = branch_locations(1);
             ws = (1:span)'./span;
             ws = ws-ws(1);
-            Y_vals(a:b,mi) = (1-ws).*y_vals_all(a:b, mi) + ws.*Y_vals(a:b, mi);
+            Y_vals_brnch(a:b,mi) = (1-ws).*y_vals_all(a:b, mi) + ws.*Y_vals_brnch(a:b, mi);
             Y_vals_main(a:b, mi) = (1-ws).*y_vals_all(a:b, mi) + ws.*Y_vals_main(a:b, mi);
 %             Y_vals_main((b-5):(b+5), mi) = smooth(Y_vals_main((b-5):(b+5), mi),3);
         end
     end
 end
 
-Y_vals_main(isnan(Y_vals)) = y_vals_all(isnan(Y_vals));
+Y_vals_main(isnan(Y_vals_brnch)) = y_vals_all(isnan(Y_vals_brnch));
 
 if (svGolay)  
-    for col=1:size(Y_vals, 2)
+    for col=1:size(Y_vals_brnch, 2)
         Y_vals_main(:, col) = smooth(X, Y_vals_main(:, col),sqrt(num_locs*2), 'sgolay');
     end          
 end
 
 Y_vals_branches{1} = Y_vals_main;
-Y_vals_branches{2} = Y_vals;
-
-% for bri=1:2
-% Y_vals = Y_vals_branches{bri};
-% for yi=1:4
-%    marker_vals = Y_vals(:, yi)';
-%    if ~all(isnan(marker_vals))
-%         inds = ~isnan(marker_vals);
-% 
-%         % plot light grey background
-%         X_fill = [X(inds), fliplr(X(inds))];        
-%         Y_fill = [marker_vals(inds)-.01, fliplr(marker_vals(inds)+.01)];
-%         fill(X_fill ,...
-%             Y_fill,...
-%             matColors(yi,:),'linestyle','none','facealpha',.5);
-%         hold on;
-%    end
-% end
-% end
+Y_vals_branches{2} = Y_vals_brnch;
 
 % plot branch ony if a branchY was given
 plot_branch=1;
@@ -248,18 +234,30 @@ for bri=1:plot_branch
     marker = Markers{bri};
     Y_vals = Y_vals_branches{bri};
     
-    % show how\when the markers change over time
+    % show how\when the markers change over time using a heatmap
     if (changes_view)
-        show_error = false;
+        
         Y_vals(2:end, :) = diff(Y_vals);
         Y_vals(1, :) = Y_vals(2,:);
+        
+        axis auto;
+        box on;
+        hold off;
+        nanimagesc(Y_vals', genColorMap('rwb', 20), 'ylabels', labels, 'zeroc', 1);
+
+        set(gca, 'Xticklabel', []);
+        set(gca,'TickLabelInterpreter','none')
+        
+        colorbar;
+
+        return;
     end
     
     plot(X, Y_vals(:, 1),marker,...
          'LineWidth', 3*sz(bri),...
          'markersize', 4*sz(bri),...
          'Color', matColors(1, :)); 
-
+    hold on;
     if (size(Y, 2)> 1)
         for col=2:size(Y, 2)
             hold on;
@@ -268,27 +266,39 @@ for bri=1:plot_branch
              'markersize', 4*sz(bri),...
              'Color', matColors(col, :));        
         end
+    else    
+%         hold on;
+%         if (normalize)
+%             scatter(x, translate(Y, mins, rngs), '.b');
+%         else
+%             scatter(x, Y, '.b');
+%         end
     end
     
-    if show_error && ~any(Y_scale)
-        Y_vals_raw = Y_vals_raws{bri};
-
-        % compute variace along X (symmetically)
+    % plot std deviation
+    if show_error 
+        % compute variace along X (symmetrically)
         for i=1:num_locs       
             
-            %symmetrical
-            Y_errs = bsxfun(@minus,Y,(Y_vals_raw(i, :)));
+            % symmetrical
+            if (normalize)
+                Ys = translate(Y, mins, rngs);
+            else
+                Ys = Y;
+            end
+            
+            Y_errs = bsxfun(@minus,Ys,(Y_vals(i, :)));
 
-            M = sum(weights(i, :)~=0);
+            M = sum(weights{bri}(i, :)~=0);
             s = (M-1)/M;
-            w_sum = sum(weights(i, :));
+            w_sum = sum(weights{bri}(i, :));
 
-            Y_valerrs(i, :) = .5*sqrt((weights(i, :)*((Y_errs).^2))/(s*w_sum));
+            Y_valerrs(i, :) = sqrt((weights{bri}(i, :)*((Y_errs).^2))/(s*w_sum));
         end
 
-        if (normalize)
-            Y_valerrs = bsxfun(@rdivide,Y_valerrs,rngs);
-        end
+%         if (normalize)
+%             Y_valerrs = bsxfun(@rdivide,Y_valerrs,rngs);
+%         end
 
         % plot the variance as a pretty translucent cloud around line
         for yi=1:size(Y, 2)
@@ -299,9 +309,9 @@ for bri=1:plot_branch
             Y_i = Y_vals(:, yi)';
             Y_i_err = Y_valerrs(:, yi)';
             
-            Y_fill = [Y_i-Y_i_err, fliplr(Y_i+Y_i_err)];
+            Y_fill = [Y_i-.5*Y_i_err, fliplr(Y_i+.5*Y_i_err)];
             
-            fill( X_fill, Y_fill,...
+            fill( X_fill(~isnan(Y_fill)), Y_fill(~isnan(Y_fill)),...
                 matColors(yi,:),'linestyle','none','facealpha',.5);
         end
     end
@@ -312,6 +322,8 @@ end
 
 if normalize && ~changes_view
     ylim([0 1]);
+else
+    ylim([min(mins) max(mins+rngs)]);
 end
 
     % show density histogram under the plot to show the concentration 
